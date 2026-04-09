@@ -1,0 +1,23 @@
+schema: custom
+context: |
+  Idioma: Español
+  Todos los artefactos deben escribirse en español.
+  - manten terminos tecnicos en ingles, por ejemplo "API", "REST", "GraphQL" in English
+  - Code examples and file paths remain in English
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+rules:
+  tasks:
+    - "Test runner: Bun built-in (bun test). No instalar frameworks externos."
+    - "Ubicación de tests: colocados junto al módulo en __tests__/ (ej: apps/api/src/auth/__tests__/login.test.ts)"
+    - "Naming: <feature>.test.ts"
+    - "Los archivos .test.ts son código real que persiste en el repo y se ejecuta con bun test"
+    - "El primer grupo de tasks de un change con TDD DEBE incluir setup del test runner si no existe aún"
