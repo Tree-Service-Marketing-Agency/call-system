@@ -1,0 +1,416 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+interface CompanyRow {
+  id: string;
+  name: string;
+  balanceCents: number;
+  billingStatus: string;
+  hasPaymentMethod: boolean;
+  lastInvoice: {
+    createdAt: string;
+    amountCents: number | null;
+    status: string | null;
+  } | null;
+}
+
+interface InvoiceRow {
+  id: string;
+  companyId: string;
+  companyName: string | null;
+  stripeInvoiceId: string | null;
+  amountCents: number;
+  status: string;
+  attemptCount: number;
+  hostedInvoiceUrl: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  failedAt: string | null;
+}
+
+interface GlobalBillingData {
+  scope: "global";
+  thresholdCents: number;
+  pricePerCallCents: number;
+  stats: {
+    paidCentsThisMonth: number;
+    paidCountThisMonth: number;
+    failedCountThisMonth: number;
+    uncollectibleCompanies: number;
+  };
+  companies: CompanyRow[];
+  invoices: InvoiceRow[];
+}
+
+function usd(cents: number | null | undefined): string {
+  return `$${((cents ?? 0) / 100).toFixed(2)}`;
+}
+
+function effectiveFeePct(thresholdCents: number): string {
+  if (thresholdCents <= 0) return "—";
+  const thresholdUsd = thresholdCents / 100;
+  const cardFee = thresholdUsd * 0.029 + 0.3;
+  const invoicingFee = Math.min(2, thresholdUsd * 0.004);
+  const total = cardFee + invoicingFee;
+  return ((total / thresholdUsd) * 100).toFixed(1);
+}
+
+function billingStatusBadge(status: string) {
+  switch (status) {
+    case "idle":
+      return (
+        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+          Idle
+        </Badge>
+      );
+    case "charging":
+      return (
+        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
+          Charging
+        </Badge>
+      );
+    case "payment_pending":
+      return (
+        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+          Payment pending
+        </Badge>
+      );
+    case "uncollectible":
+      return <Badge variant="destructive">Uncollectible</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+}
+
+interface Props {
+  role: "root" | "admin";
+}
+
+export function AgencyBillingClient({ role }: Props) {
+  const [data, setData] = useState<GlobalBillingData | null>(null);
+  const [thresholdInput, setThresholdInput] = useState("");
+  const [savingThreshold, setSavingThreshold] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    fetch("/api/billing")
+      .then((r) => r.json())
+      .then((json: GlobalBillingData) => {
+        setData(json);
+        setThresholdInput((json.thresholdCents / 100).toFixed(2));
+      });
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  async function saveThreshold() {
+    const cents = Math.round(Number(thresholdInput) * 100);
+    if (!Number.isFinite(cents) || cents < 0) return;
+    setSavingThreshold(true);
+    await fetch("/api/business-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ billingThresholdCents: cents }),
+    });
+    setSavingThreshold(false);
+    refresh();
+  }
+
+  async function runCron() {
+    setRunning(true);
+    setRunResult(null);
+    try {
+      const res = await fetch("/api/billing/run-cron", { method: "POST" });
+      const json = await res.json();
+      setRunResult(
+        `Procesado: ${json.invoicesCreated ?? 0} invoices creados, ${
+          json.invoicesFailed ?? 0
+        } fallidos, ${json.candidatesCount ?? 0} candidatas.`
+      );
+    } catch (err) {
+      setRunResult(
+        `Error: ${err instanceof Error ? err.message : "unknown"}`
+      );
+    } finally {
+      setRunning(false);
+      setTimeout(refresh, 500);
+    }
+  }
+
+  if (!data) {
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">
+              Cobrado este mes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">
+              {usd(data.stats.paidCentsThisMonth)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">
+              Invoices pagados
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">
+              {data.stats.paidCountThisMonth}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">
+              Invoices fallidos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">
+              {data.stats.failedCountThisMonth}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">
+              Uncollectible
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">
+              {data.stats.uncollectibleCompanies}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Root config panel */}
+      {role === "root" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Configuración global</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-4 md:flex-row md:items-end">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="threshold">Umbral de cobro ($)</Label>
+                <Input
+                  id="threshold"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={thresholdInput}
+                  onChange={(e) => setThresholdInput(e.target.value)}
+                  className="w-32"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Costo efectivo Stripe a este umbral: ~
+                  {effectiveFeePct(
+                    Math.round(Number(thresholdInput || 0) * 100)
+                  )}
+                  %
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={saveThreshold} disabled={savingThreshold}>
+                  {savingThreshold ? "Guardando…" : "Guardar"}
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <Button variant="outline" disabled={running}>
+                        {running ? "Ejecutando…" : "Ejecutar cobro ahora"}
+                      </Button>
+                    }
+                  />
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        ¿Ejecutar el proceso de cobro inmediatamente?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esto procesará todas las compañías elegibles ahora
+                        mismo, además del cron diario de las 05:00 UTC.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={runCron}>
+                        Ejecutar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+            {runResult && (
+              <p className="mt-3 text-sm text-muted-foreground">{runResult}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Companies table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Compañías</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Compañía</TableHead>
+                <TableHead>Balance</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Último invoice</TableHead>
+                <TableHead>Tarjeta</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.companies.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center text-muted-foreground"
+                  >
+                    Sin compañías registradas
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.companies.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell>
+                      <a
+                        href={`/companies/${c.id}`}
+                        className="text-blue-600 underline"
+                      >
+                        {c.name}
+                      </a>
+                    </TableCell>
+                    <TableCell>{usd(c.balanceCents)}</TableCell>
+                    <TableCell>{billingStatusBadge(c.billingStatus)}</TableCell>
+                    <TableCell>
+                      {c.lastInvoice ? (
+                        <span className="text-sm">
+                          {new Date(c.lastInvoice.createdAt).toLocaleDateString()}{" "}
+                          · {usd(c.lastInvoice.amountCents)} ·{" "}
+                          {c.lastInvoice.status}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{c.hasPaymentMethod ? "✓" : "✗"}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Global invoice history */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Historial global de pagos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Compañía</TableHead>
+                <TableHead>Monto</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Intentos</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.invoices.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    className="text-center text-muted-foreground"
+                  >
+                    Sin pagos registrados
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.invoices.map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell>
+                      {new Date(inv.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>{inv.companyName ?? "—"}</TableCell>
+                    <TableCell>{usd(inv.amountCents)}</TableCell>
+                    <TableCell>{billingStatusBadge(inv.status)}</TableCell>
+                    <TableCell>{inv.attemptCount}</TableCell>
+                    <TableCell className="text-right">
+                      {inv.hostedInvoiceUrl ? (
+                        <a
+                          href={inv.hostedInvoiceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 underline"
+                        >
+                          Ver
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
