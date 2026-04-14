@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { Check, Eye, X } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -30,6 +32,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface CompanyRow {
   id: string;
@@ -85,31 +93,91 @@ function effectiveFeePct(thresholdCents: number): string {
   return ((total / thresholdUsd) * 100).toFixed(1);
 }
 
-function billingStatusBadge(status: string) {
-  switch (status) {
-    case "idle":
-      return (
-        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-          Idle
-        </Badge>
-      );
-    case "charging":
-      return (
-        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          Charging
-        </Badge>
-      );
-    case "payment_pending":
-      return (
-        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-          Payment pending
-        </Badge>
-      );
-    case "uncollectible":
-      return <Badge variant="destructive">Uncollectible</Badge>;
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
+type StatusMeta = {
+  label: string;
+  description: string;
+  className?: string;
+  variant?: "destructive" | "secondary" | "outline";
+};
+
+const companyStatusMeta: Record<string, StatusMeta> = {
+  idle: {
+    label: "Idle",
+    description:
+      "La compañía está al corriente. No hay cobros pendientes y el balance aún no alcanza el umbral.",
+    className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
+  },
+  charging: {
+    label: "Charging",
+    description:
+      "Se está procesando un cobro en Stripe en este momento para esta compañía.",
+    className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+  },
+  payment_pending: {
+    label: "Payment pending",
+    description:
+      "El último cobro falló y Stripe está reintentando con Smart Retries. Puede requerir actualizar la tarjeta.",
+    className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+  },
+  uncollectible: {
+    label: "Uncollectible",
+    description:
+      "Stripe agotó todos los reintentos sin éxito. Requiere intervención manual para regularizar la cuenta.",
+    variant: "destructive",
+  },
+};
+
+const invoiceStatusMeta: Record<string, StatusMeta> = {
+  paid: {
+    label: "Pagado",
+    description: "El invoice se cobró correctamente en Stripe.",
+    className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
+  },
+  pending: {
+    label: "Pendiente",
+    description: "Invoice emitido pero todavía no confirmado como pagado por Stripe.",
+    className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+  },
+  failed: {
+    label: "Falló",
+    description:
+      "El cobro falló. Stripe está reintentando automáticamente con Smart Retries.",
+    className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+  },
+  uncollectible: {
+    label: "Incobrable",
+    description:
+      "Se agotaron los reintentos de Stripe. El invoice quedó marcado como incobrable.",
+    variant: "destructive",
+  },
+  creation_failed: {
+    label: "Error al crear",
+    description:
+      "No se pudo crear el invoice en Stripe. Revisa los logs y vuelve a ejecutar el proceso de cobro.",
+    variant: "destructive",
+  },
+};
+
+function StatusBadge({
+  status,
+  meta,
+}: {
+  status: string;
+  meta: Record<string, StatusMeta>;
+}) {
+  const cfg = meta[status] ?? { label: status, description: status };
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge className={cfg.className} variant={cfg.variant}>
+            {cfg.label}
+          </Badge>
+        }
+      />
+      <TooltipContent side="top">{cfg.description}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 interface Props {
@@ -175,6 +243,7 @@ export function AgencyBillingClient({ role }: Props) {
   }
 
   return (
+    <TooltipProvider>
     <div className="flex flex-col gap-6">
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -308,13 +377,14 @@ export function AgencyBillingClient({ role }: Props) {
                 <TableHead>Estado</TableHead>
                 <TableHead>Último invoice</TableHead>
                 <TableHead>Tarjeta</TableHead>
+                <TableHead className="w-[80px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.companies.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center text-muted-foreground"
                   >
                     Sin compañías registradas
@@ -323,16 +393,14 @@ export function AgencyBillingClient({ role }: Props) {
               ) : (
                 data.companies.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell>
-                      <a
-                        href={`/companies/${c.id}`}
-                        className="text-blue-600 underline"
-                      >
-                        {c.name}
-                      </a>
-                    </TableCell>
+                    <TableCell>{c.name}</TableCell>
                     <TableCell>{usd(c.balanceCents)}</TableCell>
-                    <TableCell>{billingStatusBadge(c.billingStatus)}</TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        status={c.billingStatus}
+                        meta={companyStatusMeta}
+                      />
+                    </TableCell>
                     <TableCell>
                       {c.lastInvoice ? (
                         <span className="text-sm">
@@ -344,7 +412,24 @@ export function AgencyBillingClient({ role }: Props) {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell>{c.hasPaymentMethod ? "✓" : "✗"}</TableCell>
+                    <TableCell>
+                      {c.hasPaymentMethod ? (
+                        <Check className="size-4 text-emerald-600" aria-label="Tarjeta registrada" />
+                      ) : (
+                        <X className="size-4 text-red-600" aria-label="Sin tarjeta" />
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/companies/${c.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`View ${c.name}`}
+                        >
+                          <Eye />
+                        </Button>
+                      </Link>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -388,7 +473,12 @@ export function AgencyBillingClient({ role }: Props) {
                     </TableCell>
                     <TableCell>{inv.companyName ?? "—"}</TableCell>
                     <TableCell>{usd(inv.amountCents)}</TableCell>
-                    <TableCell>{billingStatusBadge(inv.status)}</TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        status={inv.status}
+                        meta={invoiceStatusMeta}
+                      />
+                    </TableCell>
                     <TableCell>{inv.attemptCount}</TableCell>
                     <TableCell className="text-right">
                       {inv.hostedInvoiceUrl ? (
@@ -412,5 +502,6 @@ export function AgencyBillingClient({ role }: Props) {
         </CardContent>
       </Card>
     </div>
+    </TooltipProvider>
   );
 }
