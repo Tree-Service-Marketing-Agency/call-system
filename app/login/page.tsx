@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import logo from "@/public/logo.svg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,8 +46,18 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Call System</CardTitle>
+        <CardHeader className="flex flex-col items-center gap-3 text-center">
+          <Image
+            src={logo}
+            alt="Lola Agent"
+            width={80}
+            height={80}
+            className="size-20"
+            priority
+          />
+          <CardTitle className="font-semibold text-2xl">
+            Lola Agent
+          </CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>

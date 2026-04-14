@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Eye } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -49,29 +50,34 @@ export function CompaniesClient() {
               <TableHead>Agents</TableHead>
               <TableHead>Users</TableHead>
               <TableHead>Billing (this month)</TableHead>
+              <TableHead className="w-[80px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {companies.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   No companies yet
                 </TableCell>
               </TableRow>
             ) : (
               companies.map((company) => (
                 <TableRow key={company.id}>
-                  <TableCell>
-                    <Link
-                      href={`/companies/${company.id}`}
-                      className="text-primary underline"
-                    >
-                      {company.name}
-                    </Link>
-                  </TableCell>
+                  <TableCell>{company.name}</TableCell>
                   <TableCell>{company.agentCount}</TableCell>
                   <TableCell>{company.userCount}</TableCell>
                   <TableCell>${(Number(company.monthlyBillingCents ?? 0) / 100).toFixed(2)}</TableCell>
+                  <TableCell className="text-right">
+                    <Link href={`/companies/${company.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`View ${company.name}`}
+                      >
+                        <Eye />
+                      </Button>
+                    </Link>
+                  </TableCell>
                 </TableRow>
               ))
             )}
