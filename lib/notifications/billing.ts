@@ -49,7 +49,7 @@ export function notifyPaymentFailed(args: {
     amount_usd: amountUsd,
     attempt_count: args.attemptCount,
     next_attempt_at_iso: args.nextAttemptAtIso,
-    message: `Cobro fallido para ${args.companyName}. Intento ${args.attemptCount}.`,
+    message: `Charge failed for ${args.companyName}. Attempt ${args.attemptCount}.`,
   });
 
   notifyStaffAdmin({
@@ -59,7 +59,7 @@ export function notifyPaymentFailed(args: {
     amount_usd: amountUsd,
     customer_portal_url: args.customerPortalUrl,
     message:
-      "Tu cobro falló. Actualiza tu tarjeta para evitar interrupciones.",
+      "Your charge failed. Update your card to avoid interruptions.",
   });
 }
 
@@ -83,7 +83,7 @@ export function notifyUncollectible(args: {
     stripe_invoice_id: args.stripeInvoiceId,
     amount_usd: amountUsd,
     total_attempts: args.totalAttempts,
-    message: `Invoice incobrable tras todos los reintentos. Acción manual requerida para ${args.companyName}.`,
+    message: `Invoice uncollectible after all retries. Manual action required for ${args.companyName}.`,
   });
 
   notifyStaffAdmin({
@@ -93,7 +93,7 @@ export function notifyUncollectible(args: {
     amount_usd: amountUsd,
     customer_portal_url: args.customerPortalUrl,
     message:
-      "No pudimos cobrar tu factura tras varios intentos. Contacta a soporte para regularizar.",
+      "We couldn't charge your invoice after several attempts. Contact support to resolve.",
   });
 }
 
@@ -113,7 +113,7 @@ export function notifyNoPaymentMethod(args: {
     company_name: args.companyName,
     balance_usd: balanceUsd,
     threshold_usd: thresholdUsd,
-    message: `${args.companyName} cruzó el umbral pero no tiene tarjeta guardada.`,
+    message: `${args.companyName} crossed the threshold but has no card on file.`,
   });
 
   notifyStaffAdmin({
@@ -124,6 +124,6 @@ export function notifyNoPaymentMethod(args: {
     threshold_usd: thresholdUsd,
     setup_url: "/billing",
     message:
-      "Tu compañía tiene un balance pendiente de cobro pero no tienes método de pago guardado. Agrega una tarjeta para evitar interrupciones.",
+      "Your company has a pending balance but no payment method on file. Add a card to avoid interruptions.",
   });
 }

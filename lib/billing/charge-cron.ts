@@ -242,7 +242,7 @@ async function chargeOneCompany(
         auto_advance: true,
         collection_method: "charge_automatically",
         default_payment_method: result.stripePaymentMethodId,
-        description: `Servicio de llamadas (${result.entryCount} llamadas)`,
+        description: `Call service (${result.entryCount} calls)`,
         metadata: {
           local_invoice_id: result.invoiceId,
           local_company_name: result.companyName,
@@ -257,7 +257,7 @@ async function chargeOneCompany(
         invoice: stripeInvoice.id,
         amount: result.amountCents,
         currency: "usd",
-        description: `Servicio de llamadas — ${result.entryCount} llamada${
+        description: `Call service — ${result.entryCount} call${
           result.entryCount === 1 ? "" : "s"
         }`,
         metadata: {

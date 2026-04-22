@@ -49,7 +49,7 @@ export function SidebarBilling({}: SidebarBillingProps) {
     <Link href="/billing" className="block px-2 py-2 hover:opacity-80">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <DollarSignIcon className="size-4" />
-        <span>Balance pendiente</span>
+        <span>Outstanding balance</span>
       </div>
       <p className="px-6 text-lg font-semibold">{balance}</p>
       {data && (
@@ -60,7 +60,7 @@ export function SidebarBilling({}: SidebarBillingProps) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-xs text-muted-foreground">de {threshold}</span>
+          <span className="text-xs text-muted-foreground">of {threshold}</span>
         </div>
       )}
     </Link>

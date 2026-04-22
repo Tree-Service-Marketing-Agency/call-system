@@ -185,7 +185,7 @@ export const calls = pgTable(
     service: text("service"),
     summary: text("summary"),
     callDate: text("call_date"),
-    // Webhook 2 — metadata de llamada
+    // Webhook 2 — call metadata
     event: text("event"),
     retellEvent: text("retell_event"),
     callStatus: text("call_status"),

@@ -67,33 +67,33 @@ function statusBadge(status: BillingData["billingStatus"]) {
     case "idle":
       return (
         <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-          Al corriente
+          Up to date
         </Badge>
       );
     case "charging":
       return (
         <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          Procesando cobro
+          Processing charge
         </Badge>
       );
     case "payment_pending":
       return (
         <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-          Pago pendiente
+          Payment pending
         </Badge>
       );
     case "uncollectible":
-      return <Badge variant="destructive">Requiere atención</Badge>;
+      return <Badge variant="destructive">Requires attention</Badge>;
   }
 }
 
 function invoiceStatusBadge(status: string) {
   const map: Record<string, { label: string; className?: string; variant?: "destructive" | "secondary" | "outline" }> =
     {
-      paid: { label: "Pagado", className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" },
-      pending: { label: "Pendiente", className: "bg-blue-100 text-blue-800 hover:bg-blue-100" },
-      failed: { label: "Falló", className: "bg-amber-100 text-amber-800 hover:bg-amber-100" },
-      uncollectible: { label: "Incobrable", variant: "destructive" },
+      paid: { label: "Paid", className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" },
+      pending: { label: "Pending", className: "bg-blue-100 text-blue-800 hover:bg-blue-100" },
+      failed: { label: "Failed", className: "bg-amber-100 text-amber-800 hover:bg-amber-100" },
+      uncollectible: { label: "Uncollectible", variant: "destructive" },
       creation_failed: { label: "Error", variant: "destructive" },
     };
   const cfg = map[status] ?? { label: status };
@@ -154,12 +154,12 @@ export function StaffAdminBillingClient() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Balance actual</CardTitle>
+            <CardTitle className="text-sm font-medium">Current balance</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <p className="text-3xl font-bold">{usd(data.balanceCents)}</p>
             <p className="text-xs text-muted-foreground">
-              de {usd(data.thresholdCents)} (umbral global)
+              of {usd(data.thresholdCents)} (global threshold)
             </p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
@@ -168,8 +168,8 @@ export function StaffAdminBillingClient() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Tu próximo cobro se procesará automáticamente cuando tu balance
-              alcance el umbral.
+              Your next charge will be processed automatically when your
+              balance reaches the threshold.
             </p>
           </CardContent>
         </Card>
@@ -177,7 +177,7 @@ export function StaffAdminBillingClient() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              Método de pago
+              Payment method
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -193,7 +193,7 @@ export function StaffAdminBillingClient() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Expira {String(data.paymentMethod.expMonth).padStart(2, "0")}/
+                  Expires {String(data.paymentMethod.expMonth).padStart(2, "0")}/
                   {String(data.paymentMethod.expYear).slice(-2)}
                 </p>
                 <Button
@@ -202,17 +202,17 @@ export function StaffAdminBillingClient() {
                   onClick={openPortal}
                   disabled={openingPortal}
                 >
-                  {openingPortal ? "Abriendo…" : "Actualizar tarjeta"}
+                  {openingPortal ? "Opening…" : "Update card"}
                 </Button>
               </div>
             ) : (
               <div className="flex flex-col items-start gap-3">
                 <CreditCardIcon className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  Sin método de pago
+                  No payment method
                 </p>
                 <Button onClick={() => setShowCardDialog(true)}>
-                  Agregar tarjeta
+                  Add card
                 </Button>
               </div>
             )}
@@ -221,7 +221,7 @@ export function StaffAdminBillingClient() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Estado</CardTitle>
+            <CardTitle className="text-sm font-medium">Status</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {statusBadge(data.billingStatus)}
@@ -230,12 +230,12 @@ export function StaffAdminBillingClient() {
                 className="text-left text-sm text-blue-600 underline"
                 onClick={openPortal}
               >
-                Actualizar tarjeta
+                Update card
               </button>
             )}
             {data.billingStatus === "uncollectible" && (
               <p className="text-xs text-muted-foreground">
-                Contacta a soporte para regularizar la cuenta.
+                Contact support to bring the account current.
               </p>
             )}
           </CardContent>
@@ -244,17 +244,17 @@ export function StaffAdminBillingClient() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Historial de pagos</CardTitle>
+          <CardTitle>Payment history</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Monto</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead># Llamadas</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead># Calls</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -264,7 +264,7 @@ export function StaffAdminBillingClient() {
                     colSpan={5}
                     className="text-center text-muted-foreground"
                   >
-                    Aún no hay cobros registrados
+                    No charges recorded yet
                   </TableCell>
                 </TableRow>
               ) : (
@@ -284,7 +284,7 @@ export function StaffAdminBillingClient() {
                           rel="noreferrer"
                           className="text-blue-600 underline"
                         >
-                          Ver invoice
+                          View invoice
                         </a>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -301,7 +301,7 @@ export function StaffAdminBillingClient() {
       <Dialog open={showCardDialog} onOpenChange={setShowCardDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Agregar método de pago</DialogTitle>
+            <DialogTitle>Add payment method</DialogTitle>
           </DialogHeader>
           <CardSetupForm
             onSuccess={() => {
