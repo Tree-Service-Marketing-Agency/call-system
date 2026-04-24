@@ -8,7 +8,8 @@ export const proxy = auth((req) => {
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/webhooks")
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/external")
   ) {
     return NextResponse.next();
   }
