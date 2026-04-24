@@ -18,7 +18,7 @@ export default async function CompanyDetailPage({
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <CompanyDetailClient companyId={id} />
+      <CompanyDetailClient companyId={id} currentUserRole={session.user.role} />
     </div>
   );
 }

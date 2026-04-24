@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql, count, desc } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, companyAgents, users, calls } from "@/lib/db/schema";
+import { companies, companyAgents } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 
 export async function GET(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       createdAt: companies.createdAt,
       agentCount: sql<number>`(SELECT COUNT(*) FROM company_agents WHERE company_agents.company_id = ${companies.id})`.as("agent_count"),
       userCount: sql<number>`(SELECT COUNT(*) FROM users WHERE users.company_id = ${companies.id})`.as("user_count"),
-      monthlyBillingCents: sql<number>`COALESCE((SELECT SUM(billing_price_cents) FROM calls WHERE calls.company_id = ${companies.id} AND calls.created_at >= ${startOfMonth}), 0)`.as("monthly_billing_cents"),
+      monthlyBillingCents: sql<number>`COALESCE((SELECT SUM(amount_cents) FROM billing_ledger WHERE billing_ledger.company_id = ${companies.id} AND billing_ledger.created_at >= ${startOfMonth}), 0)`.as("monthly_billing_cents"),
     })
     .from(companies)
     .orderBy(companies.name);

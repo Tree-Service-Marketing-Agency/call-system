@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye } from "lucide-react";
 import {
   Table,
@@ -23,6 +24,7 @@ interface CompanyRow {
 }
 
 export function CompaniesClient() {
+  const router = useRouter();
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [showCreate, setShowCreate] = useState(false);
 
@@ -62,12 +64,19 @@ export function CompaniesClient() {
               </TableRow>
             ) : (
               companies.map((company) => (
-                <TableRow key={company.id}>
+                <TableRow
+                  key={company.id}
+                  onClick={() => router.push(`/companies/${company.id}`)}
+                  className="cursor-pointer hover:bg-muted/50"
+                >
                   <TableCell>{company.name}</TableCell>
                   <TableCell>{company.agentCount}</TableCell>
                   <TableCell>{company.userCount}</TableCell>
                   <TableCell>${(Number(company.monthlyBillingCents ?? 0) / 100).toFixed(2)}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell
+                    className="text-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Link href={`/companies/${company.id}`}>
                       <Button
                         variant="ghost"
