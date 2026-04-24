@@ -8,6 +8,13 @@
       "when": 1776028660287,
       "tag": "0000_real_zombie",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777060088761,
+      "tag": "0001_milky_puppet_master",
+      "breakpoints": true
     }
   ]
 }

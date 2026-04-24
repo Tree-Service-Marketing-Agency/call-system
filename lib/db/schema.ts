@@ -10,7 +10,7 @@ import {
   pgEnum,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ─── Enums ───────────────────────────────────────────────────
 
@@ -61,6 +61,11 @@ export const companies = pgTable(
     currentBalanceCents: integer("current_balance_cents").notNull().default(0),
     billingUpdatedAt: timestamp("billing_updated_at"),
     lastNoPaymentWarningAt: timestamp("last_no_payment_warning_at"),
+    notificationPhones: text("notification_phones")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    leadSnapWebhook: text("lead_snap_webhook"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
