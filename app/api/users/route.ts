@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { users, companies } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 
 function generatePassword(length = 12): string {
@@ -24,18 +24,22 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let data;
-  if (isAgencyRole(user.role)) {
-    data = await db.query.users.findMany({
-      columns: { password: false },
-    });
-  } else {
-    // staff_admin can only see users of their company
-    data = await db.query.users.findMany({
-      where: eq(users.companyId, user.companyId!),
-      columns: { password: false },
-    });
-  }
+  const where = isAgencyRole(user.role)
+    ? undefined
+    : eq(users.companyId, user.companyId!);
+
+  const data = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      companyId: users.companyId,
+      isActive: users.isActive,
+      companyName: companies.name,
+    })
+    .from(users)
+    .leftJoin(companies, eq(users.companyId, companies.id))
+    .where(where);
 
   return NextResponse.json({ data });
 }
