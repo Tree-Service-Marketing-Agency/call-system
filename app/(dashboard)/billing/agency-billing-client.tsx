@@ -104,56 +104,56 @@ const companyStatusMeta: Record<string, StatusMeta> = {
   idle: {
     label: "Idle",
     description:
-      "La compañía está al corriente. No hay cobros pendientes y el balance aún no alcanza el umbral.",
+      "The company is up to date. No charges pending and the balance has not reached the threshold.",
     className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
   },
   charging: {
     label: "Charging",
     description:
-      "Se está procesando un cobro en Stripe en este momento para esta compañía.",
+      "A charge is being processed in Stripe right now for this company.",
     className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
   },
   payment_pending: {
     label: "Payment pending",
     description:
-      "El último cobro falló y Stripe está reintentando con Smart Retries. Puede requerir actualizar la tarjeta.",
+      "The last charge failed and Stripe is retrying with Smart Retries. May require updating the card.",
     className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
   },
   uncollectible: {
     label: "Uncollectible",
     description:
-      "Stripe agotó todos los reintentos sin éxito. Requiere intervención manual para regularizar la cuenta.",
+      "Stripe exhausted all retries. Manual intervention required to resolve the account.",
     variant: "destructive",
   },
 };
 
 const invoiceStatusMeta: Record<string, StatusMeta> = {
   paid: {
-    label: "Pagado",
-    description: "El invoice se cobró correctamente en Stripe.",
+    label: "Paid",
+    description: "The invoice was charged successfully in Stripe.",
     className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
   },
   pending: {
-    label: "Pendiente",
-    description: "Invoice emitido pero todavía no confirmado como pagado por Stripe.",
+    label: "Pending",
+    description: "Invoice issued but not yet confirmed as paid by Stripe.",
     className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
   },
   failed: {
-    label: "Falló",
+    label: "Failed",
     description:
-      "El cobro falló. Stripe está reintentando automáticamente con Smart Retries.",
+      "The charge failed. Stripe is retrying automatically with Smart Retries.",
     className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
   },
   uncollectible: {
-    label: "Incobrable",
+    label: "Uncollectible",
     description:
-      "Se agotaron los reintentos de Stripe. El invoice quedó marcado como incobrable.",
+      "Stripe retries exhausted. The invoice was marked as uncollectible.",
     variant: "destructive",
   },
   creation_failed: {
-    label: "Error al crear",
+    label: "Creation error",
     description:
-      "No se pudo crear el invoice en Stripe. Revisa los logs y vuelve a ejecutar el proceso de cobro.",
+      "Failed to create the invoice in Stripe. Check the logs and re-run the charge process.",
     variant: "destructive",
   },
 };
@@ -224,9 +224,9 @@ export function AgencyBillingClient({ role }: Props) {
       const res = await fetch("/api/billing/run-cron", { method: "POST" });
       const json = await res.json();
       setRunResult(
-        `Procesado: ${json.invoicesCreated ?? 0} invoices creados, ${
+        `Processed: ${json.invoicesCreated ?? 0} invoices created, ${
           json.invoicesFailed ?? 0
-        } fallidos, ${json.candidatesCount ?? 0} candidatas.`
+        } failed, ${json.candidatesCount ?? 0} candidates.`
       );
     } catch (err) {
       setRunResult(
@@ -250,7 +250,7 @@ export function AgencyBillingClient({ role }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              Cobrado este mes
+              Charged this month
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -262,7 +262,7 @@ export function AgencyBillingClient({ role }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              Invoices pagados
+              Paid invoices
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -274,7 +274,7 @@ export function AgencyBillingClient({ role }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              Invoices fallidos
+              Failed invoices
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -301,12 +301,12 @@ export function AgencyBillingClient({ role }: Props) {
       {role === "root" && (
         <Card>
           <CardHeader>
-            <CardTitle>Configuración global</CardTitle>
+            <CardTitle>Global configuration</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-4 md:flex-row md:items-end">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="threshold">Umbral de cobro ($)</Label>
+                <Label htmlFor="threshold">Charge threshold ($)</Label>
                 <Input
                   id="threshold"
                   type="number"
@@ -317,7 +317,7 @@ export function AgencyBillingClient({ role }: Props) {
                   className="w-32"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Costo efectivo Stripe a este umbral: ~
+                  Effective Stripe cost at this threshold: ~
                   {effectiveFeePct(
                     Math.round(Number(thresholdInput || 0) * 100)
                   )}
@@ -326,30 +326,30 @@ export function AgencyBillingClient({ role }: Props) {
               </div>
               <div className="flex gap-2">
                 <Button onClick={saveThreshold} disabled={savingThreshold}>
-                  {savingThreshold ? "Guardando…" : "Guardar"}
+                  {savingThreshold ? "Saving…" : "Save"}
                 </Button>
                 <AlertDialog>
                   <AlertDialogTrigger
                     render={
                       <Button variant="outline" disabled={running}>
-                        {running ? "Ejecutando…" : "Ejecutar cobro ahora"}
+                        {running ? "Running…" : "Run charge now"}
                       </Button>
                     }
                   />
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        ¿Ejecutar el proceso de cobro inmediatamente?
+                        Run the charge process immediately?
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        Esto procesará todas las compañías elegibles ahora
-                        mismo, además del cron diario de las 05:00 UTC.
+                        This will process all eligible companies right now, in
+                        addition to the daily 05:00 UTC cron.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction onClick={runCron}>
-                        Ejecutar
+                        Run
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -366,17 +366,17 @@ export function AgencyBillingClient({ role }: Props) {
       {/* Companies table */}
       <Card>
         <CardHeader>
-          <CardTitle>Compañías</CardTitle>
+          <CardTitle>Companies</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Compañía</TableHead>
+                <TableHead>Company</TableHead>
                 <TableHead>Balance</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Último invoice</TableHead>
-                <TableHead>Tarjeta</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last invoice</TableHead>
+                <TableHead>Card</TableHead>
                 <TableHead className="w-[80px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -387,7 +387,7 @@ export function AgencyBillingClient({ role }: Props) {
                     colSpan={6}
                     className="text-center text-muted-foreground"
                   >
-                    Sin compañías registradas
+                    No companies registered
                   </TableCell>
                 </TableRow>
               ) : (
@@ -414,9 +414,9 @@ export function AgencyBillingClient({ role }: Props) {
                     </TableCell>
                     <TableCell>
                       {c.hasPaymentMethod ? (
-                        <Check className="size-4 text-emerald-600" aria-label="Tarjeta registrada" />
+                        <Check className="size-4 text-emerald-600" aria-label="Card on file" />
                       ) : (
-                        <X className="size-4 text-red-600" aria-label="Sin tarjeta" />
+                        <X className="size-4 text-red-600" aria-label="No card" />
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -441,18 +441,18 @@ export function AgencyBillingClient({ role }: Props) {
       {/* Global invoice history */}
       <Card>
         <CardHeader>
-          <CardTitle>Historial global de pagos</CardTitle>
+          <CardTitle>Global payment history</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Compañía</TableHead>
-                <TableHead>Monto</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Intentos</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Attempts</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -462,7 +462,7 @@ export function AgencyBillingClient({ role }: Props) {
                     colSpan={6}
                     className="text-center text-muted-foreground"
                   >
-                    Sin pagos registrados
+                    No payments recorded
                   </TableCell>
                 </TableRow>
               ) : (
@@ -488,7 +488,7 @@ export function AgencyBillingClient({ role }: Props) {
                           rel="noreferrer"
                           className="text-blue-600 underline"
                         >
-                          Ver
+                          View
                         </a>
                       ) : (
                         <span className="text-muted-foreground">—</span>
