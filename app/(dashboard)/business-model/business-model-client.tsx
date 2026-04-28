@@ -79,9 +79,9 @@ export function BusinessModelClient() {
     usdStringToCents(thresholdUsd) !== savedThresholdCents;
 
   return (
-    <Card className="max-w-md">
-      <CardHeader>
-        <CardTitle>Business model</CardTitle>
+    <Card className="max-w-xl">
+      <CardHeader className="border-b pb-4">
+        <CardTitle>Pricing</CardTitle>
         <CardDescription>
           Price applied to future calls and the global billing threshold.
           Existing calls keep the price they were registered with.
@@ -89,39 +89,43 @@ export function BusinessModelClient() {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="price">Price per call ($)</Label>
-            <Input
-              id="price"
-              type="number"
-              step="0.01"
-              min="0"
-              value={priceUsd}
-              onChange={(e) => setPriceUsd(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="threshold">Billing threshold ($)</Label>
-            <Input
-              id="threshold"
-              type="number"
-              step="0.01"
-              min="0"
-              value={thresholdUsd}
-              onChange={(e) => setThresholdUsd(e.target.value)}
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="price">Price per call ($)</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={priceUsd}
+                onChange={(e) => setPriceUsd(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="threshold">Billing threshold ($)</Label>
+              <Input
+                id="threshold"
+                type="number"
+                step="0.01"
+                min="0"
+                value={thresholdUsd}
+                onChange={(e) => setThresholdUsd(e.target.value)}
+              />
+            </div>
           </div>
           {updatedAt && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Last updated {new Date(updatedAt).toLocaleDateString()}
             </p>
           )}
-          <Button onClick={handleSave} disabled={loading || !dirty}>
-            {loading ? "Saving..." : "Save changes"}
-          </Button>
-          {success && (
-            <p className="text-sm text-green-600">Saved successfully</p>
-          )}
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSave} disabled={loading || !dirty}>
+              {loading ? "Saving..." : "Save changes"}
+            </Button>
+            {success && (
+              <span className="text-sm text-primary">Saved successfully</span>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

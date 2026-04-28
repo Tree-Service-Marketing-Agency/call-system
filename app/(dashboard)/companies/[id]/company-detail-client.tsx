@@ -34,6 +34,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeftIcon, PlusIcon, XIcon } from "lucide-react";
 import { CreateUserDialog } from "@/components/create-user-dialog";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageBody } from "@/components/layout/page-body";
 import type { UserRole } from "@/lib/auth-helpers";
 
 interface CompanyDetail {
@@ -232,62 +234,78 @@ export function CompanyDetailClient({
     setWebhookError(null);
   }
 
-  if (!company) return <p>Loading...</p>;
+  if (!company) {
+    return (
+      <>
+        <PageHeader title="Loading…" />
+        <PageBody>
+          <p className="text-sm text-muted-foreground">Loading company…</p>
+        </PageBody>
+      </>
+    );
+  }
 
   return (
     <>
-      <div className="flex items-center gap-4">
-        <Link href="/companies">
-          <Button variant="ghost" size="icon">
-            <ArrowLeftIcon />
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-bold">{company.name}</h1>
-        {currentUserRole === "root" && (
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={deleting}
-                >
-                  {deleting ? "Deleting…" : "Delete company"}
-                </Button>
-              }
-            />
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Delete company &ldquo;{company.name}&rdquo;?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the company, all its users,
-                  calls, billing history and agent associations. This action
-                  cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              {deleteError && (
-                <p className="text-sm text-destructive">{deleteError}</p>
-              )}
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={deleting}>
-                  Cancel
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  variant="destructive"
-                  onClick={deleteCompany}
-                  disabled={deleting}
-                >
-                  {deleting ? "Deleting…" : "Delete company"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      </div>
+      <PageHeader
+        title={
+          <span className="flex items-center gap-3">
+            <Link href="/companies">
+              <Button variant="ghost" size="icon-sm" aria-label="Back to companies">
+                <ArrowLeftIcon />
+              </Button>
+            </Link>
+            {company.name}
+          </span>
+        }
+        subtitle="Company details, agents, users and notification settings."
+        actions={
+          currentUserRole === "root" ? (
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={deleting}
+                  >
+                    {deleting ? "Deleting…" : "Delete company"}
+                  </Button>
+                }
+              />
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete company &ldquo;{company.name}&rdquo;?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete the company, all its users,
+                    calls, billing history and agent associations. This action
+                    cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {deleteError && (
+                  <p className="text-sm text-destructive">{deleteError}</p>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleting}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={deleteCompany}
+                    disabled={deleting}
+                  >
+                    {deleting ? "Deleting…" : "Delete company"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null
+        }
+      />
 
+      <PageBody>
       <Card>
         <CardHeader>
           <CardTitle>Agents</CardTitle>
@@ -510,6 +528,7 @@ export function CompanyDetailClient({
           fetchCompany();
         }}
       />
+      </PageBody>
     </>
   );
 }
