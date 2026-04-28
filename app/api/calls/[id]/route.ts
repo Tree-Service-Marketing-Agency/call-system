@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { calls } from "@/lib/db/schema";
+import { calls, companies } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 
 export async function GET(
@@ -14,18 +14,24 @@ export async function GET(
   }
 
   const { id } = await params;
-  const call = await db.query.calls.findFirst({
-    where: eq(calls.id, id),
-  });
+  const [row] = await db
+    .select({
+      call: calls,
+      companyName: companies.name,
+    })
+    .from(calls)
+    .leftJoin(companies, eq(calls.companyId, companies.id))
+    .where(eq(calls.id, id))
+    .limit(1);
 
-  if (!call) {
+  if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   // Staff can only see their company's calls
-  if (!isAgencyRole(user.role) && call.companyId !== user.companyId) {
+  if (!isAgencyRole(user.role) && row.call.companyId !== user.companyId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  return NextResponse.json(call);
+  return NextResponse.json({ ...row.call, companyName: row.companyName });
 }

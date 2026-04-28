@@ -65,43 +65,38 @@ function usd(cents: number): string {
 function statusBadge(status: BillingData["billingStatus"]) {
   switch (status) {
     case "idle":
-      return (
-        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-          Up to date
-        </Badge>
-      );
+      return <Badge variant="success">Up to date</Badge>;
     case "charging":
-      return (
-        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          Processing charge
-        </Badge>
-      );
+      return <Badge variant="secondary">Processing charge</Badge>;
     case "payment_pending":
-      return (
-        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-          Payment pending
-        </Badge>
-      );
+      return <Badge variant="warning">Payment pending</Badge>;
     case "uncollectible":
       return <Badge variant="destructive">Requires attention</Badge>;
   }
 }
 
 function invoiceStatusBadge(status: string) {
-  const map: Record<string, { label: string; className?: string; variant?: "destructive" | "secondary" | "outline" }> =
+  const map: Record<
+    string,
     {
-      paid: { label: "Paid", className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" },
-      pending: { label: "Pending", className: "bg-blue-100 text-blue-800 hover:bg-blue-100" },
-      failed: { label: "Failed", className: "bg-amber-100 text-amber-800 hover:bg-amber-100" },
-      uncollectible: { label: "Uncollectible", variant: "destructive" },
-      creation_failed: { label: "Error", variant: "destructive" },
-    };
-  const cfg = map[status] ?? { label: status };
-  return (
-    <Badge className={cfg.className} variant={cfg.variant}>
-      {cfg.label}
-    </Badge>
-  );
+      label: string;
+      variant:
+        | "default"
+        | "secondary"
+        | "destructive"
+        | "outline"
+        | "success"
+        | "warning";
+    }
+  > = {
+    paid: { label: "Paid", variant: "success" },
+    pending: { label: "Pending", variant: "secondary" },
+    failed: { label: "Failed", variant: "warning" },
+    uncollectible: { label: "Uncollectible", variant: "destructive" },
+    creation_failed: { label: "Error", variant: "destructive" },
+  };
+  const cfg = map[status] ?? { label: status, variant: "outline" as const };
+  return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
 }
 
 export function StaffAdminBillingClient() {
@@ -144,13 +139,13 @@ export function StaffAdminBillingClient() {
   );
   const barColor =
     pct >= 100
-      ? "bg-red-500"
+      ? "bg-destructive"
       : pct >= 80
-        ? "bg-amber-500"
-        : "bg-emerald-500";
+        ? "bg-[rgb(180,83,9)]"
+        : "bg-primary";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
@@ -227,7 +222,7 @@ export function StaffAdminBillingClient() {
             {statusBadge(data.billingStatus)}
             {data.billingStatus === "payment_pending" && (
               <button
-                className="text-left text-sm text-blue-600 underline"
+                className="text-left text-sm text-primary underline-offset-4 hover:underline"
                 onClick={openPortal}
               >
                 Update card
@@ -282,7 +277,7 @@ export function StaffAdminBillingClient() {
                           href={inv.hostedInvoiceUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-blue-600 underline"
+                          className="text-primary underline-offset-4 hover:underline"
                         >
                           View invoice
                         </a>

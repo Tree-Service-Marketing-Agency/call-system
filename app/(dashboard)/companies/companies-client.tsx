@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye } from "lucide-react";
+import { Eye, PlusIcon } from "lucide-react";
+
 import {
   Table,
   TableBody,
@@ -13,6 +14,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageBody } from "@/components/layout/page-body";
+import { FilterBar } from "@/components/dashboard/filter-bar";
+import { StatsGrid } from "@/components/dashboard/stats-grid";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { CreateCompanyDialog } from "./create-company-dialog";
 
 interface CompanyRow {
@@ -27,6 +33,7 @@ export function CompaniesClient() {
   const router = useRouter();
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
 
   function fetchCompanies() {
     fetch("/api/companies")
@@ -38,70 +45,129 @@ export function CompaniesClient() {
     fetchCompanies();
   }, []);
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <Button onClick={() => setShowCreate(true)}>Create Company</Button>
-      </div>
+  const filtered = useMemo(() => {
+    if (!search) return companies;
+    const q = search.toLowerCase();
+    return companies.filter((c) => c.name.toLowerCase().includes(q));
+  }, [companies, search]);
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Company</TableHead>
-              <TableHead>Agents</TableHead>
-              <TableHead>Users</TableHead>
-              <TableHead>Billing (this month)</TableHead>
-              <TableHead className="w-[80px] text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {companies.length === 0 ? (
+  const totalAgents = companies.reduce((acc, c) => acc + c.agentCount, 0);
+  const totalUsers = companies.reduce((acc, c) => acc + c.userCount, 0);
+  const totalBilling = companies.reduce(
+    (acc, c) => acc + (c.monthlyBillingCents ?? 0),
+    0,
+  );
+
+  return (
+    <>
+      <PageHeader
+        title="Companies"
+        subtitle="Tenant companies and their billing footprint."
+        actions={
+          <Button onClick={() => setShowCreate(true)}>
+            <PlusIcon data-icon="inline-start" />
+            Create company
+          </Button>
+        }
+      />
+
+      <PageBody>
+        <StatsGrid>
+          <StatCard
+            label="Total companies"
+            value={companies.length.toLocaleString()}
+          />
+          <StatCard
+            label="Total agents"
+            value={totalAgents.toLocaleString()}
+          />
+          <StatCard label="Total users" value={totalUsers.toLocaleString()} />
+          <StatCard
+            label="Billing this month"
+            value={`$${(totalBilling / 100).toLocaleString(undefined, {
+              maximumFractionDigits: 2,
+            })}`}
+          />
+        </StatsGrid>
+
+        <FilterBar
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Search companies…",
+          }}
+        />
+
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No companies yet
-                </TableCell>
+                <TableHead>Company</TableHead>
+                <TableHead className="text-right">Agents</TableHead>
+                <TableHead className="text-right">Users</TableHead>
+                <TableHead className="text-right">Billing this month</TableHead>
+                <TableHead className="w-[80px] text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              companies.map((company) => (
-                <TableRow
-                  key={company.id}
-                  onClick={() => router.push(`/companies/${company.id}`)}
-                  className="cursor-pointer hover:bg-muted/50"
-                >
-                  <TableCell>{company.name}</TableCell>
-                  <TableCell>{company.agentCount}</TableCell>
-                  <TableCell>{company.userCount}</TableCell>
-                  <TableCell>${(Number(company.monthlyBillingCents ?? 0) / 100).toFixed(2)}</TableCell>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
                   <TableCell
-                    className="text-right"
-                    onClick={(e) => e.stopPropagation()}
+                    colSpan={5}
+                    className="h-32 text-center text-sm text-muted-foreground"
                   >
-                    <Link href={`/companies/${company.id}`}>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`View ${company.name}`}
-                      >
-                        <Eye />
-                      </Button>
-                    </Link>
+                    No companies yet
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ) : (
+                filtered.map((company) => (
+                  <TableRow
+                    key={company.id}
+                    onClick={() => router.push(`/companies/${company.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <TableCell className="font-medium">
+                      {company.name}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {company.agentCount}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {company.userCount}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      ${(Number(company.monthlyBillingCents ?? 0) / 100).toFixed(2)}
+                    </TableCell>
+                    <TableCell
+                      className="text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Link href={`/companies/${company.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`View ${company.name}`}
+                        >
+                          <Eye />
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-      <CreateCompanyDialog
-        open={showCreate}
-        onOpenChange={setShowCreate}
-        onCreated={(id) => {
-          setShowCreate(false);
-          window.location.href = `/companies/${id}`;
-        }}
-      />
-    </div>
+        <CreateCompanyDialog
+          open={showCreate}
+          onOpenChange={setShowCreate}
+          onCreated={(id) => {
+            setShowCreate(false);
+            window.location.href = `/companies/${id}`;
+          }}
+        />
+      </PageBody>
+    </>
   );
 }

@@ -44,21 +44,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="flex flex-col items-center gap-3 text-center">
+        <CardHeader className="flex flex-col items-center gap-3 pt-2 text-center">
           <Image
             src={logo}
-            alt="Lola Agent"
-            width={80}
-            height={80}
-            className="size-20"
+            alt="Lola"
+            width={56}
+            height={56}
+            className="size-14"
             priority
           />
-          <CardTitle className="font-semibold text-2xl">
-            Lola Agent
-          </CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-xl font-semibold tracking-tight">
+              Welcome back
+            </CardTitle>
+            <CardDescription>Sign in to your Lola account.</CardDescription>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -85,7 +87,7 @@ export default function LoginPage() {
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full">
               {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>

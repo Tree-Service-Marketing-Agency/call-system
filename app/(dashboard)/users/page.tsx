@@ -10,10 +10,5 @@ export default async function UsersPage() {
     redirect("/calls");
   }
 
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <h1 className="text-2xl font-bold">Users</h1>
-      <UsersClient user={session.user} />
-    </div>
-  );
+  return <UsersClient user={session.user} />;
 }
