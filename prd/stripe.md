@@ -43,7 +43,6 @@ La fuente de verdad financiera deja de ser un contador mutable y pasa a ser un *
 - Suspensión automática del servicio por deuda
 - Emails reales en esta primera versión
 - Billing basado en `call_data`; solo `call_ended` será evento financiero
-- Facturación de llamadas con `disconnection_reason != 'user_hangup'`
 - Soporte de DST; el cron corre fijo a las `05:00 UTC`
 
 ---
@@ -53,7 +52,7 @@ La fuente de verdad financiera deja de ser un contador mutable y pasa a ser un *
 | Decisión | Valor |
 |---|---|
 | Evento Retell que genera cobro | `call_ended` únicamente |
-| Filtro de facturabilidad | Solo `disconnection_reason = "user_hangup"` |
+| Filtro de facturabilidad | ~~Solo `disconnection_reason = "user_hangup"`~~ — **superseded por [ADR-002](../docs/decisions/adr-002-remove-billable-disconnection-filter.md)**: sin filtro automático, toda `call_ended` con compañía resuelta crea ledger `pending`. |
 | Seguridad Retell | Verificación de `x-retell-signature` con body crudo + `RETELL_API_KEY` (HMAC-SHA256, ventana 5 min) |
 | Billing model | `billing_ledger` como fuente de verdad |
 | Money storage | Centavos enteros (`integer`) |
@@ -126,7 +125,6 @@ El sistema debe ser idempotente en tres niveles:
 │                                                                  │
 │  Retell webhook call_ended                                       │
 │    ├─ verifica firma HMAC-SHA256                                 │
-│    ├─ filtra disconnection_reason = "user_hangup"                │
 │    ├─ resuelve company_id por agent_id                           │
 │    └─ inserta billing_ledger(call_charge) [UNIQUE call_id]       │
 │         ↓                                                        │
@@ -222,8 +220,7 @@ Esquema oficial de Retell (confirmado contra docs de Retell):
 4. Si falsa → 401, log de seguridad, return
 5. Solo después de verificar, parsear JSON
 6. Si `event !== 'call_ended'` → 204, salir
-7. Si `call.disconnection_reason !== 'user_hangup'` → 204, salir (no facturable, pero sí almacenar la llamada para historial)
-8. Procesar ingest financiera (ver 12.2)
+7. Procesar ingest financiera (ver 12.2)
 
 **Consideraciones**:
 
@@ -276,7 +273,7 @@ Cambios:
 Notas:
 
 - `call-data` deja de tocar billing
-- `call-ended` define el cargo (solo si `disconnection_reason = 'user_hangup'`)
+- `call-ended` define el cargo para toda llamada con compañía resuelta (sin filtro por `disconnection_reason`, ver ADR-002)
 - Como el sistema no tiene datos en producción, la migración es drop + recreate sin necesidad de data backfill
 
 #### `business_config`
@@ -370,7 +367,7 @@ Restricciones:
 
 ### 12.2 Ingest financiera desde Retell: `call_ended`
 
-Solo el webhook `call_ended` con `disconnection_reason = 'user_hangup'` tiene efecto financiero.
+Toda `call_ended` con compañía resuelta tiene efecto financiero. No hay filtro automático por `disconnection_reason` (ver ADR-002).
 
 Flujo completo:
 
@@ -381,9 +378,9 @@ Flujo completo:
 5. Parsear JSON
 6. Si `event !== 'call_ended'` → 204, salir
 7. Resolver `company_id` por `agent_id` (vía `company_agents`)
-8. **Upsert de `calls`** por `(call_id, agent_id)` siempre — guardamos el registro de la llamada incluso si no es facturable, para historial
+8. **Upsert de `calls`** por `(call_id, agent_id)` siempre — guardamos el registro completo (incluyendo `disconnection_reason` para auditoría)
 9. Set `retell_event = 'call_ended'`
-10. **Filtro de facturabilidad**: si `disconnection_reason !== 'user_hangup'` → 204, salir sin tocar ledger
+10. Si no hay `companyId` resuelto → 204, log warning. (No es posible insertar ledger sin compañía por restricción FK; caso huérfano)
 11. Resolver `price_per_call_cents` desde `business_config`
 12. En transacción:
     - Set `billing_price_cents = price_per_call_cents` en el row de `calls`
@@ -777,7 +774,6 @@ Todo flujo debe usar logs estructurados con:
 Casos a loguear:
 
 - firma inválida Retell
-- `call_ended` con `disconnection_reason != user_hangup` ignorado
 - `call_ended` duplicado por `call_id`
 - ledger insert exitoso
 - ledger duplicate ignored
@@ -809,18 +805,20 @@ Casos a loguear:
 | Método de pago removido durante charging | `payment_method.detached` limpia el campo, invoice en flight sigue su curso, fallo entra a flujo normal |
 | Cron caído | trigger manual root + healthcheck + alerta si no corre antes de 06:00 UTC |
 | DST genera shift de 1h en hora local | aceptado por diseño, cron siempre 05:00 UTC |
-| Llamadas no `user_hangup` ocupan storage | aceptado: se guardan para historial, no generan ledger |
+| Cobro de llamadas que el operador considera no cobrables | mitigado por acción manual **Mark non-billable** (ADR-001); el operador revisa `Pending` y voidea las que no apliquen |
 | Cron + trigger manual concurrentes | `SELECT FOR UPDATE SKIP LOCKED` por compañía garantiza procesamiento único |
 
 ---
 
 ## 21. Decisión de facturabilidad de `call_ended`
 
-**Cerrada**: solo se factura `call_ended` con `disconnection_reason = "user_hangup"`.
+> **Superseded por [ADR-002](../docs/decisions/adr-002-remove-billable-disconnection-filter.md)**.
+> El sistema actual **no aplica filtro automático** por `disconnection_reason`. Toda `call_ended` con compañía resuelta crea ledger entry `pending`. La acción manual **Mark non-billable** (ADR-001) es la única ruta para excluir una llamada del cobro.
 
-Esta regla se implementa como filtro en el handler del webhook (sección 12.2 paso 10), **antes** de insertar en el ledger. Las llamadas con otros disconnection reasons (`dial_failed`, `dial_busy`, `dial_no_answer`, `agent_hangup`, `error`, etc.) **sí se almacenan** en la tabla `calls` para historial pero **no generan ledger entry** ni afectan al balance.
+**Histórico** (regla original, ya inválida):
 
-Esta es una regla de producto. Si se decide cambiarla en el futuro (ej: cobrar también `agent_hangup`), el cambio es mínimo: ampliar el conjunto de valores aceptados en el filtro.
+> Solo se factura `call_ended` con `disconnection_reason = "user_hangup"`.
+> Esta regla se implementaba como filtro en el handler del webhook, antes de insertar en el ledger. Las llamadas con otros disconnection reasons (`dial_failed`, `dial_busy`, `dial_no_answer`, `agent_hangup`, `error`, etc.) se almacenaban en `calls` para historial pero no generaban ledger entry.
 
 ---
 
@@ -831,8 +829,8 @@ Esta es una regla de producto. Si se decide cambiarla en el futuro (ej: cobrar t
 - Rechaza firma inválida con 401
 - Rechaza timestamp fuera de ventana de 5 minutos
 - Ignora eventos distintos de `call_ended` con 204
-- Procesa `call_ended` con `disconnection_reason = 'user_hangup'`: crea call + ledger
-- Almacena `call_ended` con `disconnection_reason != 'user_hangup'`: crea call, NO crea ledger
+- Procesa cualquier `call_ended` con compañía resuelta: crea call + ledger (sin filtro por `disconnection_reason`, ver ADR-002)
+- `call_ended` con `agent_id` huérfano: crea call, NO crea ledger (caso por restricción de FK)
 - Retry del mismo `call_id` no duplica ledger ni balance
 - Body re-serializado con whitespace distinto rechaza firma
 
@@ -895,7 +893,7 @@ Esta es una regla de producto. Si se decide cambiarla en el futuro (ej: cobrar t
 
 - [ ] Verificar firma Retell con raw body usando `Retell.verify()` del SDK oficial
 - [ ] Asegurar que el route handler de Next.js 16 lea raw body sin parsear
-- [ ] Implementar filtro `disconnection_reason = 'user_hangup'` en `/api/webhooks/call-ended`
+- [x] ~~Implementar filtro `disconnection_reason = 'user_hangup'` en `/api/webhooks/call-ended`~~ — **descartado por ADR-002**
 - [ ] Quitar todo impacto financiero de `/api/webhooks/call-data`
 - [ ] Verificar firma Stripe con raw body
 - [ ] Deduplicar Stripe webhook por `event.id` en tabla `stripe_webhook_events`
@@ -951,8 +949,8 @@ Ver sección 22.
 
 El PRD se considera implementado cuando:
 
-- Una llamada `call_ended` con `disconnection_reason = 'user_hangup'` crea exactamente un cargo financiero
-- Una llamada `call_ended` con otro `disconnection_reason` se almacena pero no genera ledger
+- Toda `call_ended` con compañía resuelta crea exactamente un cargo financiero, sin importar `disconnection_reason` (ADR-002)
+- Una `call_ended` con `agent_id` huérfano se almacena pero no genera ledger (limitación de FK)
 - Retries de Retell del mismo `call_id` no duplican balance
 - El balance visible coincide con el ledger pendiente (`reconcile-balance` retorna 0 drift)
 - El cron genera invoices solo para compañías elegibles

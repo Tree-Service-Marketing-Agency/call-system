@@ -19,7 +19,7 @@ _Avoid_: "incompleta" (la llamada en sí pudo haber durado cualquier cosa).
 Cinco valores derivados que se muestran como badges en la columna **Billing** de `/calls`. Se computan desde `billing_ledger.status` y `calls.invoiceId`; no se almacenan como columna explícita.
 
 **Pending**:
-La **Call** tiene una **Ledger entry** en `pending` o `reserved`. Va a entrar al próximo cron de cobro.
+La **Call** tiene una **Ledger entry** en `pending` o `reserved`. Va a entrar al próximo cron de cobro. Toda **Call** con `call_ended` y compañía resuelta entra acá por default — no hay filtro automático por `disconnection_reason` (ver ADR-002).
 
 **Charged**:
 La **Call** ya fue liquidada — su **Ledger entry** está en `paid` y `calls.invoiceId` apunta a un **Invoice** pagado.
@@ -29,11 +29,11 @@ Un `root` deliberadamente excluyó la **Call** del cobro. Su **Ledger entry** es
 _Avoid_: "cancelada", "rechazada" (se confunden con `disconnection_reason`).
 
 **Not billable**:
-La **Call** nunca fue elegible para cobro y no tiene **Ledger entry**. Causas: `disconnection_reason !== 'user_hangup'` o no hay compañía resuelta por `agent_id`.
+La **Call** no tiene **Ledger entry**. Causa única: el `agent_id` no resuelve a una compañía registrada en `company_agents` (caso raro — agente huérfano). Cualquier `call_ended` con compañía válida produce **Ledger entry** y aparece como **Pending**, sin importar el `disconnection_reason`.
 _Avoid_: "filtrada", "ignorada".
 
 **Partial**:
-Subcaso de _Not billable_ para llamadas que sólo recibieron `call_data`. A diferencia de _Not billable_, **sí** puede transitar a **Pending** si después llega `call_ended` con `user_hangup`.
+Subcaso de _Not billable_ para llamadas que sólo recibieron `call_data`. A diferencia de _Not billable_, **sí** puede transitar a **Pending** si después llega `call_ended` con compañía resuelta.
 
 ### Acciones sobre el ledger
 
@@ -47,7 +47,7 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 ## Relationships
 
 - Una **Call** tiene cero o una **Ledger entry** (`UNIQUE(call_id, entry_type)` en `billing_ledger`).
-- Sólo las **Calls** con `disconnection_reason = 'user_hangup'` **y** compañía resuelta producen **Ledger entries**.
+- Toda **Call** con `call_ended` y compañía resuelta produce una **Ledger entry**, sin filtro por `disconnection_reason` (ADR-002).
 - Transiciones legales del status del ledger:
   - `pending → reserved → paid` (camino del cron)
   - `pending ↔ void` (Void / Restore manuales por root)
