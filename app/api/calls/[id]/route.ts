@@ -65,7 +65,7 @@ export async function GET(
   }
 
   const ledgerStatus: LedgerStatus | null = ledger?.status ?? null;
-  const state: BillingState = deriveBillingState({
+  const state: BillingState | null = deriveBillingState({
     webhook2Received: row.call.webhook2Received,
     ledgerStatus,
   });
