@@ -16,7 +16,7 @@ _Avoid_: "incompleta" (la llamada en sí pudo haber durado cualquier cosa).
 
 ### Estados de billing de una Call
 
-Cinco valores derivados que se muestran como badges en la columna **Billing** de `/calls`. Se computan desde `billing_ledger.status` y `calls.invoiceId`; no se almacenan como columna explícita.
+Cuatro valores derivados que se muestran como badges en la columna **Billing** de `/calls`. Se computan desde `billing_ledger.status` y `calls.invoiceId`; no se almacenan como columna explícita. Una **Call** sin **Ledger entry** y con `webhook2_received = true` no muestra badge — la celda queda como `—`.
 
 **Pending**:
 La **Call** tiene una **Ledger entry** en `pending` o `reserved`. Va a entrar al próximo cron de cobro.
@@ -28,12 +28,8 @@ La **Call** ya fue liquidada — su **Ledger entry** está en `paid` y `calls.in
 Un `root` deliberadamente excluyó la **Call** del cobro. Su **Ledger entry** está en `void`. No entra al cron y no suma al balance.
 _Avoid_: "cancelada", "rechazada" (se confunden con `disconnection_reason`).
 
-**Not billable**:
-La **Call** nunca fue elegible para cobro y no tiene **Ledger entry**. Causas: `disconnection_reason !== 'user_hangup'` o no hay compañía resuelta por `agent_id`.
-_Avoid_: "filtrada", "ignorada".
-
 **Partial**:
-Subcaso de _Not billable_ para llamadas que sólo recibieron `call_data`. A diferencia de _Not billable_, **sí** puede transitar a **Pending** si después llega `call_ended` con `user_hangup`.
+La **Call** sólo recibió `call_data` y aún no tiene `call_ended`. Puede transitar a **Pending** si después llega `call_ended` con un `disconnection_reason` facturable.
 
 ### Acciones sobre el ledger
 
@@ -47,7 +43,7 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 ## Relationships
 
 - Una **Call** tiene cero o una **Ledger entry** (`UNIQUE(call_id, entry_type)` en `billing_ledger`).
-- Sólo las **Calls** con `disconnection_reason = 'user_hangup'` **y** compañía resuelta producen **Ledger entries**.
+- Sólo las **Calls** con `disconnection_reason ∈ {'user_hangup', 'agent_hangup'}` (ver `lib/billing/rules.ts`) **y** compañía resuelta producen **Ledger entries**.
 - Transiciones legales del status del ledger:
   - `pending → reserved → paid` (camino del cron)
   - `pending ↔ void` (Void / Restore manuales por root)
@@ -63,6 +59,6 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 
 ## Flagged ambiguities
 
-- **"Non-billable"** se usaba ambiguo para "sistema la filtró" y "humano la excluyó". Resuelto: **Not billable** = sistema (sin ledger entry); **Marked non-billable** = humano (`ledger.status = 'void'`).
+- **"Non-billable"** se usaba ambiguo para "sistema la filtró" y "humano la excluyó". Resuelto: las llamadas que el sistema descarta no muestran badge (celda `—`); **Marked non-billable** = humano (`ledger.status = 'void'`).
 - **"Status"** estaba sobrecargado en `/calls`: la columna existente muestra `callStatus` de Retell, y los billing states también son "estados". Resuelto: la columna existente sigue siendo "Status" (Retell); la nueva columna se llama "Billing".
 - **"Charge"** vs **"Bill"**: el código usa `charge` para la operación de cobro vía Stripe (`charge-cron.ts`); la UI usa "Billing" como sección. Mantener: `charge` = verbo/operación; "Billing" = concepto/sección de UI.

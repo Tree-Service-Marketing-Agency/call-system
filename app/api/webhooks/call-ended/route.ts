@@ -4,6 +4,7 @@ import Retell from "retell-sdk";
 import { db } from "@/lib/db";
 import { calls, companyAgents, companies } from "@/lib/db/schema";
 import { insertCallChargeLedgerEntry } from "@/lib/billing/ledger";
+import { isBillableDisconnection } from "@/lib/billing/rules";
 
 export async function POST(request: Request) {
   // 1. Read raw body BEFORE parsing — re-serializing changes whitespace and
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
   }
 
   // 6. Billable filter.
-  if (disconnection_reason !== "user_hangup") {
+  if (!isBillableDisconnection(disconnection_reason)) {
     console.log(
       "[call-ended] non-billable disconnection",
       JSON.stringify({

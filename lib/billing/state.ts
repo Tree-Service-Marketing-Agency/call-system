@@ -2,7 +2,6 @@ export type BillingState =
   | "Pending"
   | "Charged"
   | "Marked non-billable"
-  | "Not billable"
   | "Partial";
 
 export type LedgerStatus = "pending" | "reserved" | "paid" | "void";
@@ -10,9 +9,9 @@ export type LedgerStatus = "pending" | "reserved" | "paid" | "void";
 export function deriveBillingState(input: {
   webhook2Received: boolean;
   ledgerStatus: LedgerStatus | null;
-}): BillingState {
+}): BillingState | null {
   if (!input.webhook2Received) return "Partial";
-  if (input.ledgerStatus === null) return "Not billable";
+  if (input.ledgerStatus === null) return null;
   if (input.ledgerStatus === "void") return "Marked non-billable";
   if (input.ledgerStatus === "paid") return "Charged";
   return "Pending";
@@ -28,7 +27,6 @@ export function billingStateBadgeVariant(
       return "success";
     case "Marked non-billable":
       return "destructive";
-    case "Not billable":
     case "Partial":
       return "outline";
   }

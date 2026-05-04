@@ -60,7 +60,7 @@ interface CallDetail {
   webhook1Received: boolean;
   webhook2Received: boolean;
   billing: {
-    state: BillingState;
+    state: BillingState | null;
     ledgerStatus: LedgerStatus | null;
     amountCents: number | null;
     invoiceUrl: string | null;
@@ -335,11 +335,13 @@ export function CallDetailSheet({
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     {statusBadge(call.callStatus)}
-                    <Badge
-                      variant={billingStateBadgeVariant(call.billing.state)}
-                    >
-                      {call.billing.state}
-                    </Badge>
+                    {call.billing.state && (
+                      <Badge
+                        variant={billingStateBadgeVariant(call.billing.state)}
+                      >
+                        {call.billing.state}
+                      </Badge>
+                    )}
                     <Badge
                       variant="secondary"
                       className="font-normal text-muted-foreground"
@@ -421,11 +423,15 @@ export function CallDetailSheet({
                   <DetailField
                     label="Status"
                     value={
-                      <Badge
-                        variant={billingStateBadgeVariant(call.billing.state)}
-                      >
-                        {call.billing.state}
-                      </Badge>
+                      call.billing.state ? (
+                        <Badge
+                          variant={billingStateBadgeVariant(call.billing.state)}
+                        >
+                          {call.billing.state}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )
                     }
                   />
                   <DetailField
