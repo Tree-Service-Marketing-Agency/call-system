@@ -4,7 +4,7 @@
 
 | # | Titulo | Estado | Fecha |
 |---|---|---|---|
-| — | Sin decisiones registradas aun | | |
+| [001](./adr-001-void-status-for-non-billable-calls.md) | Marcar llamadas no cobrables como nuevo status `void` en `billing_ledger` | Aceptado | 2026-05-04 |
 
 ---
 

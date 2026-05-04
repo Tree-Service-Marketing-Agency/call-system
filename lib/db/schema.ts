@@ -34,6 +34,7 @@ export const ledgerStatusEnum = pgEnum("ledger_status", [
   "pending",
   "reserved",
   "paid",
+  "void",
 ]);
 
 export const invoiceStatusEnum = pgEnum("invoice_status", [
@@ -244,6 +245,10 @@ export const billingLedger = pgTable(
     amountCents: integer("amount_cents").notNull(),
     status: ledgerStatusEnum("status").notNull().default("pending"),
     invoiceId: text("invoice_id").references((): AnyPgColumn => invoices.id, {
+      onDelete: "set null",
+    }),
+    voidedAt: timestamp("voided_at"),
+    voidedBy: text("voided_by").references(() => users.id, {
       onDelete: "set null",
     }),
     createdAt: timestamp("created_at").defaultNow().notNull(),

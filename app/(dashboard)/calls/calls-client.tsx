@@ -15,6 +15,11 @@ import { AlertCircleIcon } from "lucide-react";
 import { CallDetailSheet } from "./call-detail-sheet";
 import { CompanyFilter } from "@/components/company-filter";
 import type { SessionUser } from "@/lib/auth-helpers";
+import {
+  billingStateBadgeVariant,
+  deriveBillingState,
+  type LedgerStatus,
+} from "@/lib/billing/state";
 
 interface CallRow {
   id: string;
@@ -29,6 +34,7 @@ interface CallRow {
   companyName: string | null;
   webhook1Received: boolean;
   webhook2Received: boolean;
+  ledgerStatus: LedgerStatus | null;
 }
 
 interface CallsResponse {
@@ -72,6 +78,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
   }, [fetchCalls]);
 
   const totalPages = Math.ceil(total / pageSize);
+  const columnCount = isAgency ? 7 : 6;
 
   return (
     <div className="flex flex-col gap-4">
@@ -91,6 +98,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
               <TableHead>Customer</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Billing</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Date</TableHead>
               {isAgency && <TableHead>Company</TableHead>}
@@ -100,42 +108,53 @@ export function CallsClient({ user }: { user: SessionUser }) {
             {calls.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={isAgency ? 6 : 5}
+                  colSpan={columnCount}
                   className="text-center text-muted-foreground"
                 >
                   No calls found
                 </TableCell>
               </TableRow>
             ) : (
-              calls.map((call) => (
-                <TableRow
-                  key={call.id}
-                  className="cursor-pointer"
-                  onClick={() => setSelectedCallId(call.id)}
-                >
-                  <TableCell>
-                    {call.customerName ?? (
-                      <span className="text-muted-foreground">Pending</span>
+              calls.map((call) => {
+                const billingState = deriveBillingState({
+                  webhook2Received: call.webhook2Received,
+                  ledgerStatus: call.ledgerStatus,
+                });
+                return (
+                  <TableRow
+                    key={call.id}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedCallId(call.id)}
+                  >
+                    <TableCell>
+                      {call.customerName ?? (
+                        <span className="text-muted-foreground">Pending</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{call.customerPhone ?? "—"}</TableCell>
+                    <TableCell>
+                      {call.callStatus ? (
+                        <Badge variant="secondary">{call.callStatus}</Badge>
+                      ) : (
+                        <Badge variant="outline">Partial</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={billingStateBadgeVariant(billingState)}>
+                        {billingState}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatDuration(call.durationMs)}</TableCell>
+                    <TableCell>
+                      {call.callDate ??
+                        new Date(call.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    {isAgency && (
+                      <TableCell>{call.companyName ?? "—"}</TableCell>
                     )}
-                  </TableCell>
-                  <TableCell>{call.customerPhone ?? "—"}</TableCell>
-                  <TableCell>
-                    {call.callStatus ? (
-                      <Badge variant="secondary">{call.callStatus}</Badge>
-                    ) : (
-                      <Badge variant="outline">Partial</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{formatDuration(call.durationMs)}</TableCell>
-                  <TableCell>
-                    {call.callDate ??
-                      new Date(call.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  {isAgency && (
-                    <TableCell>{call.companyName ?? "—"}</TableCell>
-                  )}
-                </TableRow>
-              ))
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -168,6 +187,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
       <CallDetailSheet
         callId={selectedCallId}
         onClose={() => setSelectedCallId(null)}
+        onMutated={fetchCalls}
       />
     </div>
   );
