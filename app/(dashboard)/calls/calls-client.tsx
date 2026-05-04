@@ -22,6 +22,11 @@ import { DataTablePagination } from "@/components/dashboard/data-table-paginatio
 import { CompanyFilter } from "@/components/company-filter";
 import { CallDetailSheet } from "./call-detail-sheet";
 import type { SessionUser } from "@/lib/auth-helpers";
+import {
+  billingStateBadgeVariant,
+  deriveBillingState,
+  type LedgerStatus,
+} from "@/lib/billing/state";
 
 type Period = "today" | "7d" | "30d" | "all";
 
@@ -38,6 +43,7 @@ interface CallRow {
   companyName: string | null;
   webhook1Received: boolean;
   webhook2Received: boolean;
+  ledgerStatus: LedgerStatus | null;
 }
 
 interface CallsStats {
@@ -278,6 +284,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
                 <TableHead>Customer</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Billing</TableHead>
                 <TableHead>Duration</TableHead>
                 <TableHead>Date</TableHead>
                 {isAgency && <TableHead>Company</TableHead>}
@@ -287,7 +294,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
               {filteredCalls.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAgency ? 6 : 5}
+                    colSpan={isAgency ? 7 : 6}
                     className="h-32 text-center text-sm text-muted-foreground"
                   >
                     No calls found
@@ -296,6 +303,10 @@ export function CallsClient({ user }: { user: SessionUser }) {
               ) : (
                 filteredCalls.map((call) => {
                   const { date, time } = formatDate(call);
+                  const billingState = deriveBillingState({
+                    webhook2Received: call.webhook2Received,
+                    ledgerStatus: call.ledgerStatus,
+                  });
                   return (
                     <TableRow
                       key={call.id}
@@ -314,6 +325,11 @@ export function CallsClient({ user }: { user: SessionUser }) {
                         {call.customerPhone ?? "—"}
                       </TableCell>
                       <TableCell>{statusBadge(call.callStatus)}</TableCell>
+                      <TableCell>
+                        <Badge variant={billingStateBadgeVariant(billingState)}>
+                          {billingState}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="tabular-nums">
                         {formatDuration(call.durationMs)}
                       </TableCell>
@@ -344,6 +360,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
         <CallDetailSheet
           callId={selectedCallId}
           onClose={() => setSelectedCallId(null)}
+          onMutated={fetchCalls}
         />
       </PageBody>
     </>

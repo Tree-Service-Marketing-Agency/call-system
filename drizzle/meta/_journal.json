@@ -15,6 +15,13 @@
       "when": 1777060088761,
       "tag": "0001_milky_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777928807687,
+      "tag": "0002_stiff_chamber",
+      "breakpoints": true
     }
   ]
 }
