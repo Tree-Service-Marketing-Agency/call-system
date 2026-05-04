@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarIcon, ClockIcon, DownloadIcon, PlayIcon, SquareIcon } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  CalendarIcon,
+  ClockIcon,
+  DownloadIcon,
+  ExternalLinkIcon,
+  PlayIcon,
+  SquareIcon,
+} from "lucide-react";
 
 import {
   Sheet,
@@ -10,10 +16,28 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import {
+  billingStateBadgeVariant,
+  formatCents,
+  type BillingState,
+  type LedgerStatus,
+} from "@/lib/billing/state";
 
 interface CallDetail {
   id: string;
@@ -35,6 +59,16 @@ interface CallDetail {
   createdAt: string;
   webhook1Received: boolean;
   webhook2Received: boolean;
+  billing: {
+    state: BillingState;
+    ledgerStatus: LedgerStatus | null;
+    amountCents: number | null;
+    invoiceUrl: string | null;
+    voidedAt: string | null;
+    voidedByEmail: string | null;
+    canVoid: boolean;
+    canRestore: boolean;
+  };
 }
 
 const COMPLETED_STATUSES = new Set(["completed", "ended", "successful"]);
@@ -62,6 +96,13 @@ function formatTime(seconds: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatDateTimeFull(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
 }
 
 function statusBadge(status: string | null) {
@@ -189,15 +230,20 @@ function InlineAudioPlayer({ src }: { src: string }) {
 export function CallDetailSheet({
   callId,
   onClose,
+  onMutated,
 }: {
   callId: string | null;
   onClose: () => void;
+  onMutated?: () => void;
 }) {
   const [call, setCall] = useState<CallDetail | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!callId) return;
     let cancelled = false;
+    setError(null);
     fetch(`/api/calls/${callId}`)
       .then((res) => res.json())
       .then((data) => {
@@ -212,10 +258,40 @@ export function CallDetailSheet({
   // next open).
   useEffect(() => {
     if (!callId && call) {
-      const t = setTimeout(() => setCall(null), 150);
+      const t = setTimeout(() => {
+        setCall(null);
+        setError(null);
+      }, 150);
       return () => clearTimeout(t);
     }
   }, [callId, call]);
+
+  async function mutateBilling(action: "void" | "restore") {
+    if (!callId) return;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/calls/${callId}/billing-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+      const refreshed = await fetch(`/api/calls/${callId}`).then((r) =>
+        r.json(),
+      );
+      setCall(refreshed);
+      onMutated?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setPending(false);
+    }
+  }
 
   const customer =
     call?.customerName?.trim() ||
@@ -260,6 +336,11 @@ export function CallDetailSheet({
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     {statusBadge(call.callStatus)}
                     <Badge
+                      variant={billingStateBadgeVariant(call.billing.state)}
+                    >
+                      {call.billing.state}
+                    </Badge>
+                    <Badge
                       variant="secondary"
                       className="font-normal text-muted-foreground"
                     >
@@ -293,26 +374,180 @@ export function CallDetailSheet({
               )
             ) : null}
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              <div className="grid grid-cols-2 gap-x-5 gap-y-5">
-                <DetailField label="Customer" value={call.customerName} />
-                <DetailField label="Phone" value={call.customerPhone} mono />
-                <DetailField label="Address" value={call.customerAddress} />
-                <DetailField label="City" value={call.customerCity} />
-                <DetailField label="Zipcode" value={call.customerZipcode} mono />
-                <DetailField label="Service" value={call.service} />
-                <DetailField
-                  label="Date"
-                  value={call.callDate ?? formatDateTime(call)}
-                />
-                <DetailField
-                  label="Duration"
-                  value={formatDuration(call.durationMs)}
-                />
-                <DetailField label="Summary" value={call.summary} full />
+            {/* Tabs body */}
+            <Tabs
+              defaultValue="call"
+              className="flex flex-1 flex-col gap-0 overflow-hidden"
+            >
+              <div className="border-b border-border px-6 pt-3">
+                <TabsList variant="line">
+                  <TabsTrigger value="call">Call</TabsTrigger>
+                  <TabsTrigger value="billing">Billing</TabsTrigger>
+                </TabsList>
               </div>
-            </div>
+
+              <TabsContent
+                value="call"
+                className="flex-1 overflow-y-auto px-6 py-5"
+              >
+                <div className="grid grid-cols-2 gap-x-5 gap-y-5">
+                  <DetailField label="Customer" value={call.customerName} />
+                  <DetailField label="Phone" value={call.customerPhone} mono />
+                  <DetailField label="Address" value={call.customerAddress} />
+                  <DetailField label="City" value={call.customerCity} />
+                  <DetailField
+                    label="Zipcode"
+                    value={call.customerZipcode}
+                    mono
+                  />
+                  <DetailField label="Service" value={call.service} />
+                  <DetailField
+                    label="Date"
+                    value={call.callDate ?? formatDateTime(call)}
+                  />
+                  <DetailField
+                    label="Duration"
+                    value={formatDuration(call.durationMs)}
+                  />
+                  <DetailField label="Summary" value={call.summary} full />
+                </div>
+              </TabsContent>
+
+              <TabsContent
+                value="billing"
+                className="flex-1 overflow-y-auto px-6 py-5"
+              >
+                <div className="grid grid-cols-2 gap-x-5 gap-y-5">
+                  <DetailField
+                    label="Status"
+                    value={
+                      <Badge
+                        variant={billingStateBadgeVariant(call.billing.state)}
+                      >
+                        {call.billing.state}
+                      </Badge>
+                    }
+                  />
+                  <DetailField
+                    label="Amount"
+                    value={formatCents(call.billing.amountCents)}
+                    mono
+                  />
+                  {call.billing.state === "Charged" &&
+                    call.billing.invoiceUrl && (
+                      <DetailField
+                        label="Invoice"
+                        full
+                        value={
+                          <a
+                            href={call.billing.invoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+                          >
+                            View invoice
+                            <ExternalLinkIcon className="size-3" />
+                          </a>
+                        }
+                      />
+                    )}
+                  {call.billing.state === "Marked non-billable" && (
+                    <>
+                      <DetailField
+                        label="Voided by"
+                        value={call.billing.voidedByEmail}
+                      />
+                      <DetailField
+                        label="Voided at"
+                        value={formatDateTimeFull(call.billing.voidedAt)}
+                      />
+                    </>
+                  )}
+                </div>
+
+                {error && (
+                  <p
+                    className="mt-4 text-sm text-destructive"
+                    role="alert"
+                  >
+                    {error}
+                  </p>
+                )}
+
+                {(call.billing.canVoid || call.billing.canRestore) && (
+                  <div className="mt-6 flex flex-wrap gap-2">
+                    {call.billing.canVoid && (
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <Button variant="destructive" disabled={pending}>
+                              Mark as non-billable
+                            </Button>
+                          }
+                        />
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              Mark this call as non-billable?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This call won&apos;t be charged on the next
+                              billing run.{" "}
+                              {formatCents(call.billing.amountCents)} will be
+                              removed from {call.companyName ?? "the company"}
+                              &apos;s pending balance. You can restore it later
+                              if needed.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => mutateBilling("void")}
+                            >
+                              Mark as non-billable
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                    {call.billing.canRestore && (
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <Button variant="outline" disabled={pending}>
+                              Restore as billable
+                            </Button>
+                          }
+                        />
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              Restore this call as billable?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This call will be added back to{" "}
+                              {call.companyName ?? "the company"}&apos;s
+                              pending balance (
+                              {formatCents(call.billing.amountCents)}) and
+                              included in the next billing run.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => mutateBilling("restore")}
+                            >
+                              Restore as billable
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
 
             {/* Footer */}
             {audioAvailable && call.audioUrl && (
