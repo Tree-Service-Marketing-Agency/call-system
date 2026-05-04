@@ -5,6 +5,7 @@
 | # | Titulo | Estado | Fecha |
 |---|---|---|---|
 | [001](./adr-001-void-status-for-non-billable-calls.md) | Marcar llamadas no cobrables como nuevo status `void` en `billing_ledger` | Aceptado | 2026-05-04 |
+| [002](./adr-002-remove-billable-disconnection-filter.md) | Eliminar filtro automático por `disconnection_reason` | Aceptado | 2026-05-04 |
 
 ---
 

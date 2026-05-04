@@ -148,18 +148,9 @@ export async function POST(request: Request) {
     callRowId = inserted[0].id;
   }
 
-  // 6. Billable filter.
-  if (disconnection_reason !== "user_hangup") {
-    console.log(
-      "[call-ended] non-billable disconnection",
-      JSON.stringify({
-        call_id,
-        disconnection_reason: disconnection_reason ?? null,
-      })
-    );
-    return new NextResponse(null, { status: 204 });
-  }
-
+  // 6. Require a resolved company to bill. Disconnection reason is preserved
+  // on the call row for audit; the manual Void action (ADR-001) is the single
+  // path for excluding a call from billing (ADR-002).
   if (!companyId) {
     console.warn(
       "[call-ended] billable call but no company resolved",
