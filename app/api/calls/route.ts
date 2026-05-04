@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, desc, count, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { calls, companies } from "@/lib/db/schema";
+import { calls, companies, billingLedger } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 
 const PAGE_SIZE = 15;
@@ -50,9 +50,11 @@ export async function GET(request: NextRequest) {
         companyName: companies.name,
         webhook1Received: calls.webhook1Received,
         webhook2Received: calls.webhook2Received,
+        ledgerStatus: billingLedger.status,
       })
       .from(calls)
       .leftJoin(companies, eq(calls.companyId, companies.id))
+      .leftJoin(billingLedger, eq(billingLedger.callRowId, calls.id))
       .where(where)
       .orderBy(desc(calls.createdAt))
       .limit(PAGE_SIZE)
