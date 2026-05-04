@@ -326,9 +326,13 @@ export function CallsClient({ user }: { user: SessionUser }) {
                       </TableCell>
                       <TableCell>{statusBadge(call.callStatus)}</TableCell>
                       <TableCell>
-                        <Badge variant={billingStateBadgeVariant(billingState)}>
-                          {billingState}
-                        </Badge>
+                        {billingState ? (
+                          <Badge variant={billingStateBadgeVariant(billingState)}>
+                            {billingState}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="tabular-nums">
                         {formatDuration(call.durationMs)}
