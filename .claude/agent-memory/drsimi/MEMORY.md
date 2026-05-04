@@ -1,0 +1,1 @@
+- [Billing state model](project_billing_state_model.md) — Billing column es derivada (no persistida); sólo `disconnection_reason='user_hangup'` crea ledger

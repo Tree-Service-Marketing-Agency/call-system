@@ -16,6 +16,12 @@
       "sourceType": "github",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
     },
+    "grill-with-docs": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/grill-with-docs/SKILL.md",
+      "computedHash": "31a5b1ae116558bf7d3f633f442835f54bd7645923d4f45c7823e52a97317666"
+    },
     "next-best-practices": {
       "source": "vercel-labs/next-skills",
       "sourceType": "github",
@@ -25,6 +31,18 @@
       "source": "shadcn/ui",
       "sourceType": "github",
       "computedHash": "873c67922d80775a9fdf596db7964b579f0408c30ec6e3d11989f6055bbec89f"
+    },
+    "techdebt": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/techdebt/SKILL.md",
+      "computedHash": "98c2e95370d7227410338ae412b5b988c7347c8020ec92223f9edcc7f7d8ec14"
+    },
+    "to-prd": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/to-prd/SKILL.md",
+      "computedHash": "fd8c259f9c44eff08e29a1a2fc71a806a3568d279a55387a361f78620b10f2aa"
     },
     "web-design-guidelines": {
       "source": "vercel-labs/agent-skills",
