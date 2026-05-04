@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Agentation } from "agentation";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -21,6 +22,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans">
         {children}
+        <Toaster richColors position="bottom-right" />
         {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>
