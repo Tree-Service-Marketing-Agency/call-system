@@ -30,8 +30,6 @@ import { CreateUserDialog } from "@/components/create-user-dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageBody } from "@/components/layout/page-body";
 import { FilterBar } from "@/components/dashboard/filter-bar";
-import { StatsGrid } from "@/components/dashboard/stats-grid";
-import { StatCard } from "@/components/dashboard/stat-card";
 import type { SessionUser } from "@/lib/auth-helpers";
 
 interface UserRow {
@@ -84,11 +82,6 @@ export function UsersClient({ user }: { user: SessionUser }) {
     );
   }, [usersList, search]);
 
-  const activeCount = usersList.filter((u) => u.isActive).length;
-  const adminCount = usersList.filter((u) =>
-    ["root", "admin", "staff_admin"].includes(u.role),
-  ).length;
-  const staffCount = usersList.filter((u) => u.role === "staff").length;
   const canCreate = user.role === "staff_admin" && Boolean(user.companyId);
 
   return (
@@ -107,16 +100,6 @@ export function UsersClient({ user }: { user: SessionUser }) {
       />
 
       <PageBody>
-        <StatsGrid>
-          <StatCard
-            label="Total users"
-            value={usersList.length.toLocaleString()}
-          />
-          <StatCard label="Active" value={activeCount.toLocaleString()} />
-          <StatCard label="Admins" value={adminCount.toLocaleString()} />
-          <StatCard label="Staff" value={staffCount.toLocaleString()} />
-        </StatsGrid>
-
         <FilterBar
           search={{
             value: search,

@@ -17,8 +17,6 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageBody } from "@/components/layout/page-body";
 import { FilterBar } from "@/components/dashboard/filter-bar";
-import { StatsGrid } from "@/components/dashboard/stats-grid";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { CreateCompanyDialog } from "./create-company-dialog";
 
 interface CompanyRow {
@@ -51,13 +49,6 @@ export function CompaniesClient() {
     return companies.filter((c) => c.name.toLowerCase().includes(q));
   }, [companies, search]);
 
-  const totalAgents = companies.reduce((acc, c) => acc + c.agentCount, 0);
-  const totalUsers = companies.reduce((acc, c) => acc + c.userCount, 0);
-  const totalBilling = companies.reduce(
-    (acc, c) => acc + (c.monthlyBillingCents ?? 0),
-    0,
-  );
-
   return (
     <>
       <PageHeader
@@ -72,24 +63,6 @@ export function CompaniesClient() {
       />
 
       <PageBody>
-        <StatsGrid>
-          <StatCard
-            label="Total companies"
-            value={companies.length.toLocaleString()}
-          />
-          <StatCard
-            label="Total agents"
-            value={totalAgents.toLocaleString()}
-          />
-          <StatCard label="Total users" value={totalUsers.toLocaleString()} />
-          <StatCard
-            label="Billing this month"
-            value={`$${(totalBilling / 100).toLocaleString(undefined, {
-              maximumFractionDigits: 2,
-            })}`}
-          />
-        </StatsGrid>
-
         <FilterBar
           search={{
             value: search,
