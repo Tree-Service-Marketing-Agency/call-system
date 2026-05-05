@@ -30,10 +30,17 @@ export function CompanyFilter({
       .then((data) => setCompanies(data.data ?? []));
   }, []);
 
+  const nameById = new Map(companies.map((c) => [c.id, c.name]));
+
   return (
     <Select value={value} onValueChange={(v) => onChange(v ?? "")}>
       <SelectTrigger className="w-64">
-        <SelectValue placeholder="All companies" />
+        <SelectValue placeholder="All companies">
+          {(v) => {
+            if (!v || v === "all") return "All companies";
+            return nameById.get(String(v)) ?? "All companies";
+          }}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
