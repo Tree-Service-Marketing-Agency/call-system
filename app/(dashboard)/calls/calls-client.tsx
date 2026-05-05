@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { AlertCircleIcon } from "lucide-react";
 
 import {
@@ -12,13 +13,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageBody } from "@/components/layout/page-body";
-import { StatsGrid } from "@/components/dashboard/stats-grid";
-import { StatCard, type TrendDirection } from "@/components/dashboard/stat-card";
 import { FilterBar } from "@/components/dashboard/filter-bar";
 import { DataTablePagination } from "@/components/dashboard/data-table-pagination";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CompanyFilter } from "@/components/company-filter";
 import { CallDetailSheet } from "./call-detail-sheet";
 import type { SessionUser } from "@/lib/auth-helpers";
@@ -28,7 +34,7 @@ import {
   type LedgerStatus,
 } from "@/lib/billing/state";
 
-type Period = "today" | "7d" | "30d" | "all";
+type BillingFilter = "pending" | "charged" | "non-billable";
 
 interface CallRow {
   id: string;
@@ -46,50 +52,34 @@ interface CallRow {
   ledgerStatus: LedgerStatus | null;
 }
 
-interface CallsStats {
-  total: number;
-  avgDurationMs: number;
-  completionRate: number;
-  customers: number;
-  deltas: {
-    total: number | null;
-    avgDurationMs: number | null;
-    completionRate: number | null;
-    customers: number | null;
-  };
-}
-
 interface CallsResponse {
   data: CallRow[];
   total: number;
   page: number;
   pageSize: number;
-  period: Period;
-  stats: CallsStats;
 }
 
-const PERIOD_LABELS: Record<Period, string> = {
-  today: "Today",
-  "7d": "7d",
-  "30d": "30d",
-  all: "All",
-};
+const BILLING_OPTIONS: { value: BillingFilter; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "charged", label: "Charged" },
+  { value: "non-billable", label: "Marked non-billable" },
+];
 
-const PERIOD_TOTAL_LABEL: Record<Period, string> = {
-  today: "Calls today",
-  "7d": "Calls (last 7 days)",
-  "30d": "Calls (last 30 days)",
-  all: "Total calls",
-};
+const BILLING_VALUES = new Set<BillingFilter>([
+  "pending",
+  "charged",
+  "non-billable",
+]);
 
-const PERIOD_COMPARISON: Record<Period, string | null> = {
-  today: "vs yesterday",
-  "7d": "vs previous 7 days",
-  "30d": "vs previous 30 days",
-  all: null,
-};
+const FILTER_DEBOUNCE_MS = 250;
 
-const PERIODS: Period[] = ["today", "7d", "30d", "all"];
+function parseBilling(raw: string | null): BillingFilter | null {
+  if (!raw) return null;
+  const value = raw.trim();
+  return BILLING_VALUES.has(value as BillingFilter)
+    ? (value as BillingFilter)
+    : null;
+}
 
 function formatDuration(ms: number | null): string {
   if (!ms || ms <= 0) return "—";
@@ -97,19 +87,6 @@ function formatDuration(ms: number | null): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
-}
-
-function formatDelta(
-  delta: number | null,
-): { label: string; direction: TrendDirection } | null {
-  if (delta === null) return null;
-  const direction: TrendDirection =
-    delta > 0 ? "up" : delta < 0 ? "down" : "neutral";
-  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
-  return {
-    label: `${sign}${Math.abs(delta).toFixed(0)}%`,
-    direction,
-  };
 }
 
 function formatDate(call: CallRow): { date: string; time: string } {
@@ -143,37 +120,71 @@ function statusBadge(status: string | null) {
 }
 
 export function CallsClient({ user }: { user: SessionUser }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const initialPage = parseInt(searchParams.get("page") ?? "1", 10) || 1;
+  const initialCompanyId = searchParams.get("companyId") ?? "";
+  const initialBilling = parseBilling(searchParams.get("billing"));
+  const initialSearch = searchParams.get("q") ?? "";
+
   const [calls, setCalls] = useState<CallRow[]>([]);
-  const [stats, setStats] = useState<CallsStats | null>(null);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [period, setPeriod] = useState<Period>("all");
-  const [search, setSearch] = useState("");
-  const [companyFilter, setCompanyFilter] = useState<string>("");
+  const [page, setPage] = useState(initialPage);
+  const [search, setSearch] = useState(initialSearch);
+  const [companyId, setCompanyId] = useState<string>(initialCompanyId);
+  const [billing, setBilling] = useState<BillingFilter | null>(initialBilling);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+
   const isAgency = user.role === "root" || user.role === "admin";
   const pageSize = 15;
+  const isFirstSyncRef = useRef(true);
 
-  const fetchCalls = useCallback(() => {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      period,
-    });
-    if (companyFilter && companyFilter !== "all")
-      params.set("companyId", companyFilter);
+  const fetchCalls = useCallback(
+    (qs: URLSearchParams) => {
+      fetch(`/api/calls?${qs.toString()}`)
+        .then((res) => res.json())
+        .then((data: CallsResponse) => {
+          setCalls(data.data);
+          setTotal(data.total);
+        });
+    },
+    [],
+  );
 
-    fetch(`/api/calls?${params}`)
-      .then((res) => res.json())
-      .then((data: CallsResponse) => {
-        setCalls(data.data);
-        setTotal(data.total);
-        setStats(data.stats);
-      });
-  }, [page, period, companyFilter]);
+  const buildQueryString = useCallback(() => {
+    const params = new URLSearchParams();
+    if (page !== 1) params.set("page", page.toString());
+    if (companyId) params.set("companyId", companyId);
+    if (billing) params.set("billing", billing);
+    if (search) params.set("q", search);
+    return params;
+  }, [page, companyId, billing, search]);
 
   useEffect(() => {
-    fetchCalls();
-  }, [fetchCalls]);
+    const params = buildQueryString();
+
+    if (isFirstSyncRef.current) {
+      isFirstSyncRef.current = false;
+      const fetchParams = new URLSearchParams(params);
+      fetchParams.set("page", page.toString());
+      fetchCalls(fetchParams);
+      return;
+    }
+
+    const handle = setTimeout(() => {
+      const next = params.toString();
+      const url = next ? `${pathname}?${next}` : pathname;
+      router.replace(url, { scroll: false });
+
+      const fetchParams = new URLSearchParams(params);
+      fetchParams.set("page", page.toString());
+      fetchCalls(fetchParams);
+    }, FILTER_DEBOUNCE_MS);
+
+    return () => clearTimeout(handle);
+  }, [buildQueryString, fetchCalls, page, pathname, router]);
 
   const filteredCalls = search
     ? calls.filter((c) => {
@@ -186,70 +197,14 @@ export function CallsClient({ user }: { user: SessionUser }) {
       })
     : calls;
 
-  const totalDelta = formatDelta(stats?.deltas.total ?? null);
-  const durationDelta = formatDelta(stats?.deltas.avgDurationMs ?? null);
-  const completionDelta = formatDelta(stats?.deltas.completionRate ?? null);
-  const customersDelta = formatDelta(stats?.deltas.customers ?? null);
-  const comparisonLabel = PERIOD_COMPARISON[period];
-
   return (
     <>
       <PageHeader
         title="Calls"
         subtitle="All inbound calls across your customers' agents."
-        actions={
-          <Tabs
-            value={period}
-            onValueChange={(v) => {
-              setPeriod(v as Period);
-              setPage(1);
-            }}
-          >
-            <TabsList>
-              {PERIODS.map((p) => (
-                <TabsTrigger key={p} value={p}>
-                  {PERIOD_LABELS[p]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        }
       />
 
       <PageBody>
-        <StatsGrid>
-          <StatCard
-            label={PERIOD_TOTAL_LABEL[period]}
-            value={stats?.total.toLocaleString() ?? "—"}
-            trend={totalDelta?.label}
-            trendDirection={totalDelta?.direction}
-            comparison={totalDelta ? comparisonLabel : undefined}
-          />
-          <StatCard
-            label="Avg duration"
-            value={formatDuration(stats?.avgDurationMs ?? 0)}
-            trend={durationDelta?.label}
-            trendDirection={durationDelta?.direction}
-            comparison={durationDelta ? comparisonLabel : undefined}
-          />
-          <StatCard
-            label="Completion rate"
-            value={
-              stats ? `${(stats.completionRate * 100).toFixed(0)}%` : "—"
-            }
-            trend={completionDelta?.label}
-            trendDirection={completionDelta?.direction}
-            comparison={completionDelta ? comparisonLabel : undefined}
-          />
-          <StatCard
-            label="Unique customers"
-            value={stats?.customers.toLocaleString() ?? "—"}
-            trend={customersDelta?.label}
-            trendDirection={customersDelta?.direction}
-            comparison={customersDelta ? comparisonLabel : undefined}
-          />
-        </StatsGrid>
-
         <FilterBar
           search={{
             value: search,
@@ -260,15 +215,41 @@ export function CallsClient({ user }: { user: SessionUser }) {
             placeholder: "Search by name, phone or company…",
           }}
           filters={
-            isAgency ? (
-              <CompanyFilter
-                value={companyFilter}
-                onChange={(v) => {
-                  setCompanyFilter(v);
+            <>
+              {isAgency && (
+                <CompanyFilter
+                  value={companyId}
+                  onChange={(v) => {
+                    setCompanyId(v === "all" ? "" : v);
+                    setPage(1);
+                  }}
+                />
+              )}
+              <Select
+                value={billing ?? "all"}
+                onValueChange={(v) => {
+                  const next = v as string | null;
+                  setBilling(
+                    !next || next === "all" ? null : (next as BillingFilter),
+                  );
                   setPage(1);
                 }}
-              />
-            ) : null
+              >
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="All billing states" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="all">All billing states</SelectItem>
+                    {BILLING_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </>
           }
         />
 
@@ -364,7 +345,11 @@ export function CallsClient({ user }: { user: SessionUser }) {
         <CallDetailSheet
           callId={selectedCallId}
           onClose={() => setSelectedCallId(null)}
-          onMutated={fetchCalls}
+          onMutated={() => {
+            const fetchParams = buildQueryString();
+            fetchParams.set("page", page.toString());
+            fetchCalls(fetchParams);
+          }}
         />
       </PageBody>
     </>

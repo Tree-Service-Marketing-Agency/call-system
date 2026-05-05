@@ -5,6 +5,7 @@
 | # | Titulo | Estado | Fecha |
 |---|---|---|---|
 | [001](./adr-001-void-status-for-non-billable-calls.md) | Marcar llamadas no cobrables como nuevo status `void` en `billing_ledger` | Aceptado | 2026-05-04 |
+| [002](./adr-002-url-state-for-list-filters.md) | Estado de filtros en URL para listas del dashboard | Aceptado | 2026-05-04 |
 
 ---
 
