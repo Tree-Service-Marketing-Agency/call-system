@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { calls, companies, companyAgents, users } from "@/lib/db/schema";
+import {
+  billingLedger,
+  calls,
+  companies,
+  companyAgents,
+  users,
+} from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 
 export async function GET(
@@ -26,7 +32,27 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(company);
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [billingRow] = await db
+    .select({
+      monthlyBillingCents: sql<number>`COALESCE(SUM(${billingLedger.amountCents}), 0)::int`,
+    })
+    .from(billingLedger)
+    .where(
+      and(
+        eq(billingLedger.companyId, id),
+        gte(billingLedger.createdAt, startOfMonth),
+      ),
+    );
+
+  return NextResponse.json({
+    ...company,
+    agentCount: company.agents.length,
+    userCount: company.users.length,
+    monthlyBillingCents: Number(billingRow?.monthlyBillingCents ?? 0),
+  });
 }
 
 export async function PATCH(

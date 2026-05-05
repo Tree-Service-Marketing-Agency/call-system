@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "drizzle-orm";
+import { ilike, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, companyAgents } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
+
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
 
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
@@ -21,11 +24,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data });
   }
 
-  // Full query with aggregated counts
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
+  const requestedPageSize = parseInt(
+    searchParams.get("pageSize") ?? String(DEFAULT_PAGE_SIZE),
+    10,
+  );
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, requestedPageSize || DEFAULT_PAGE_SIZE),
+  );
+  const search = (searchParams.get("q") ?? "").trim();
+  const where = search ? ilike(companies.name, `%${search}%`) : undefined;
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const data = await db
+  const totalQuery = db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(companies);
+  const totalRow = where
+    ? await totalQuery.where(where)
+    : await totalQuery;
+  const total = Number(totalRow[0]?.count ?? 0);
+
+  const dataQuery = db
     .select({
       id: companies.id,
       name: companies.name,
@@ -35,9 +57,13 @@ export async function GET(request: NextRequest) {
       monthlyBillingCents: sql<number>`COALESCE((SELECT SUM(amount_cents) FROM billing_ledger WHERE billing_ledger.company_id = ${companies.id} AND billing_ledger.created_at >= ${startOfMonth}), 0)`.as("monthly_billing_cents"),
     })
     .from(companies)
-    .orderBy(companies.name);
+    .orderBy(companies.name)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
 
-  return NextResponse.json({ data });
+  const data = where ? await dataQuery.where(where) : await dataQuery;
+
+  return NextResponse.json({ data, total, page, pageSize });
 }
 
 export async function POST(request: Request) {
