@@ -119,25 +119,51 @@ function statusBadge(status: string | null) {
   return <Badge variant="secondary">{status}</Badge>;
 }
 
-export function CallsClient({ user }: { user: SessionUser }) {
+interface CallsClientProps {
+  user: SessionUser;
+  /**
+   * When set, scopes the calls list to a single company. Hides the
+   * CompanyFilter and stops syncing companyId to the URL — the route already
+   * implies which company we're looking at.
+   */
+  companyId?: string;
+  /**
+   * Render the page header. Off when embedded inside another page (e.g. the
+   * company detail tabs), where the parent already owns the header.
+   */
+  showHeader?: boolean;
+}
+
+export function CallsClient({
+  user,
+  companyId: scopedCompanyId,
+  showHeader = true,
+}: CallsClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const isScoped = Boolean(scopedCompanyId);
+
   const initialPage = parseInt(searchParams.get("page") ?? "1", 10) || 1;
-  const initialCompanyId = searchParams.get("companyId") ?? "";
   const initialBilling = parseBilling(searchParams.get("billing"));
   const initialSearch = searchParams.get("q") ?? "";
+  const initialFilterCompanyId = searchParams.get("companyId") ?? "";
 
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(initialPage);
   const [search, setSearch] = useState(initialSearch);
-  const [companyId, setCompanyId] = useState<string>(initialCompanyId);
+  const [filterCompanyId, setFilterCompanyId] = useState<string>(
+    initialFilterCompanyId,
+  );
   const [billing, setBilling] = useState<BillingFilter | null>(initialBilling);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
 
+  const companyId = isScoped ? (scopedCompanyId as string) : filterCompanyId;
+
   const isAgency = user.role === "root" || user.role === "admin";
+  const showCompanyColumn = isAgency && !isScoped;
   const pageSize = 15;
   const isFirstSyncRef = useRef(true);
 
@@ -153,38 +179,45 @@ export function CallsClient({ user }: { user: SessionUser }) {
     [],
   );
 
-  const buildQueryString = useCallback(() => {
+  const buildFetchParams = useCallback(() => {
     const params = new URLSearchParams();
-    if (page !== 1) params.set("page", page.toString());
+    params.set("page", page.toString());
     if (companyId) params.set("companyId", companyId);
     if (billing) params.set("billing", billing);
     if (search) params.set("q", search);
     return params;
   }, [page, companyId, billing, search]);
 
-  useEffect(() => {
-    const params = buildQueryString();
+  const buildUrlParams = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (page !== 1) params.set("page", page.toString());
+    else params.delete("page");
+    if (!isScoped && companyId) params.set("companyId", companyId);
+    else if (!isScoped) params.delete("companyId");
+    if (billing) params.set("billing", billing);
+    else params.delete("billing");
+    if (search) params.set("q", search);
+    else params.delete("q");
+    return params;
+  }, [page, companyId, billing, search, isScoped, searchParams]);
 
+  useEffect(() => {
     if (isFirstSyncRef.current) {
       isFirstSyncRef.current = false;
-      const fetchParams = new URLSearchParams(params);
-      fetchParams.set("page", page.toString());
-      fetchCalls(fetchParams);
+      fetchCalls(buildFetchParams());
       return;
     }
 
     const handle = setTimeout(() => {
+      const params = buildUrlParams();
       const next = params.toString();
       const url = next ? `${pathname}?${next}` : pathname;
       router.replace(url, { scroll: false });
-
-      const fetchParams = new URLSearchParams(params);
-      fetchParams.set("page", page.toString());
-      fetchCalls(fetchParams);
+      fetchCalls(buildFetchParams());
     }, FILTER_DEBOUNCE_MS);
 
     return () => clearTimeout(handle);
-  }, [buildQueryString, fetchCalls, page, pathname, router]);
+  }, [buildFetchParams, buildUrlParams, fetchCalls, pathname, router]);
 
   const filteredCalls = search
     ? calls.filter((c) => {
@@ -197,14 +230,8 @@ export function CallsClient({ user }: { user: SessionUser }) {
       })
     : calls;
 
-  return (
+  const body = (
     <>
-      <PageHeader
-        title="Calls"
-        subtitle="All inbound calls across your customers' agents."
-      />
-
-      <PageBody>
         <FilterBar
           search={{
             value: search,
@@ -216,11 +243,11 @@ export function CallsClient({ user }: { user: SessionUser }) {
           }}
           filters={
             <>
-              {isAgency && (
+              {isAgency && !isScoped && (
                 <CompanyFilter
-                  value={companyId}
+                  value={filterCompanyId}
                   onChange={(v) => {
-                    setCompanyId(v === "all" ? "" : v);
+                    setFilterCompanyId(v === "all" ? "" : v);
                     setPage(1);
                   }}
                 />
@@ -268,14 +295,14 @@ export function CallsClient({ user }: { user: SessionUser }) {
                 <TableHead>Billing</TableHead>
                 <TableHead>Duration</TableHead>
                 <TableHead>Date</TableHead>
-                {isAgency && <TableHead>Company</TableHead>}
+                {showCompanyColumn && <TableHead>Company</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredCalls.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAgency ? 7 : 6}
+                    colSpan={showCompanyColumn ? 7 : 6}
                     className="h-32 text-center text-sm text-muted-foreground"
                   >
                     No calls found
@@ -324,7 +351,7 @@ export function CallsClient({ user }: { user: SessionUser }) {
                           <span className="text-muted-foreground-2"> · {time}</span>
                         )}
                       </TableCell>
-                      {isAgency && (
+                      {showCompanyColumn && (
                         <TableCell>{call.companyName ?? "—"}</TableCell>
                       )}
                     </TableRow>
@@ -345,13 +372,22 @@ export function CallsClient({ user }: { user: SessionUser }) {
         <CallDetailSheet
           callId={selectedCallId}
           onClose={() => setSelectedCallId(null)}
-          onMutated={() => {
-            const fetchParams = buildQueryString();
-            fetchParams.set("page", page.toString());
-            fetchCalls(fetchParams);
-          }}
+          onMutated={() => fetchCalls(buildFetchParams())}
         />
-      </PageBody>
+    </>
+  );
+
+  if (!showHeader) {
+    return body;
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Calls"
+        subtitle="All inbound calls across your customers' agents."
+      />
+      <PageBody>{body}</PageBody>
     </>
   );
 }

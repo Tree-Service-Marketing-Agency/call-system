@@ -16,7 +16,5 @@ export default async function CompanyDetailPage({
 
   const { id } = await params;
 
-  return (
-    <CompanyDetailClient companyId={id} currentUserRole={session.user.role} />
-  );
+  return <CompanyDetailClient companyId={id} user={session.user} />;
 }
