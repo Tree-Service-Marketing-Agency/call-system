@@ -24,6 +24,20 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  if (targetUser.role === "root") {
+    return NextResponse.json(
+      { error: "Cannot modify root user" },
+      { status: 403 },
+    );
+  }
+
+  if (targetUser.role === "admin" && currentUser.role !== "root") {
+    return NextResponse.json(
+      { error: "Only root can modify agency users" },
+      { status: 403 },
+    );
+  }
+
   // staff_admin can only modify users in their company
   if (
     !isAgencyRole(currentUser.role) &&
@@ -64,6 +78,13 @@ export async function DELETE(
 
   if (targetUser.role === "root") {
     return NextResponse.json({ error: "Cannot delete root user" }, { status: 400 });
+  }
+
+  if (targetUser.role === "admin" && currentUser.role !== "root") {
+    return NextResponse.json(
+      { error: "Only root can delete agency users" },
+      { status: 403 },
+    );
   }
 
   if (

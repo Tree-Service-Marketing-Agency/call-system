@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { users, companies } from "@/lib/db/schema";
@@ -12,13 +12,9 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (user.role === "staff") {
+  if (!isAgencyRole(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  const where = isAgencyRole(user.role)
-    ? undefined
-    : eq(users.companyId, user.companyId!);
 
   const data = await db
     .select({
@@ -31,7 +27,7 @@ export async function GET() {
     })
     .from(users)
     .leftJoin(companies, eq(users.companyId, companies.id))
-    .where(where);
+    .where(inArray(users.role, ["root", "admin"]));
 
   return NextResponse.json({ data });
 }
@@ -53,23 +49,56 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "email and role are required" }, { status: 400 });
   }
 
-  // Validate role assignment
-  if (role === "root" || role === "admin") {
+  const isAgencyTarget = role === "root" || role === "admin";
+
+  if (isAgencyTarget) {
+    if (!isAgencyRole(currentUser.role)) {
+      return NextResponse.json(
+        { error: "Only agency users can create agency users" },
+        { status: 403 },
+      );
+    }
+
+    if (companyId) {
+      return NextResponse.json(
+        { error: "Agency users cannot have a companyId" },
+        { status: 400 },
+      );
+    }
+
+    const plainPassword = customPassword || generatePassword();
+    const hashedPassword = await bcryptjs.hash(plainPassword, 10);
+
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        email,
+        password: hashedPassword,
+        role,
+        companyId: null,
+        isActive: true,
+      })
+      .returning({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+        companyId: users.companyId,
+        isActive: users.isActive,
+      });
+
     return NextResponse.json(
-      { error: "Cannot create root or admin users" },
-      { status: 400 }
+      { ...newUser, generatedPassword: plainPassword },
+      { status: 201 },
     );
   }
 
-  // staff_admin can only create users in their own company
-  const targetCompanyId = currentUser.role === "staff_admin"
-    ? currentUser.companyId
-    : companyId;
+  const targetCompanyId =
+    currentUser.role === "staff_admin" ? currentUser.companyId : companyId;
 
   if (!targetCompanyId) {
     return NextResponse.json(
       { error: "companyId is required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -95,6 +124,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     { ...newUser, generatedPassword: plainPassword },
-    { status: 201 }
+    { status: 201 },
   );
 }
