@@ -4,6 +4,22 @@ Call System es el dashboard de la agencia para gestionar llamadas de voice agent
 
 ## Language
 
+### Usuarios
+
+**Agency user**:
+Un usuario interno de la agencia con acceso transversal a todas las compañías. Cubre los roles `root` y `admin`. No tiene `companyId`. Se gestiona en `/users`. El helper `isAgencyRole(role)` (en `lib/auth-helpers.ts`) es la fuente de verdad.
+_Avoid_: "administrative user" (se confunde con el rol `admin`), "internal user".
+
+**Company user**:
+Un usuario asociado a una compañía cliente, con acceso limitado a su propio dashboard. Cubre los roles `staff_admin` y `staff`. Tiene `companyId` no nulo. Se gestiona desde el detalle de cada compañía (`/companies/[id]?tab=users`), no desde `/users`.
+_Avoid_: "tenant user", "client user".
+
+**Roles** (enum `userRoleEnum`):
+- `root` — agency user con poderes destructivos (delete, void, deactivate). Inmutable desde la UI: ningún rol puede borrarlo o desactivarlo.
+- `admin` — agency user sin poderes destructivos sobre otros agency users. Puede crear nuevos agency users (root o admin) pero no borrarlos ni desactivarlos.
+- `staff_admin` — company user con permisos elevados dentro de su compañía (gestionar staff, ver billing).
+- `staff` — company user de solo lectura sobre los datos de su compañía.
+
 ### Llamadas
 
 **Call**:
