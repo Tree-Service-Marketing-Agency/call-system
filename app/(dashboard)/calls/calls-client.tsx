@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { AlertCircleIcon } from "lucide-react";
 
@@ -167,28 +167,25 @@ export function CallsClient({
   const pageSize = 15;
   const isFirstSyncRef = useRef(true);
 
-  const fetchCalls = useCallback(
-    (qs: URLSearchParams) => {
-      fetch(`/api/calls?${qs.toString()}`)
-        .then((res) => res.json())
-        .then((data: CallsResponse) => {
-          setCalls(data.data);
-          setTotal(data.total);
-        });
-    },
-    [],
-  );
+  const fetchCalls = (qs: URLSearchParams) => {
+    fetch(`/api/calls?${qs.toString()}`)
+      .then((res) => res.json())
+      .then((data: CallsResponse) => {
+        setCalls(data.data);
+        setTotal(data.total);
+      });
+  };
 
-  const buildFetchParams = useCallback(() => {
+  const buildFetchParams = () => {
     const params = new URLSearchParams();
     params.set("page", page.toString());
     if (companyId) params.set("companyId", companyId);
     if (billing) params.set("billing", billing);
     if (search) params.set("q", search);
     return params;
-  }, [page, companyId, billing, search]);
+  };
 
-  const buildUrlParams = useCallback(() => {
+  const buildUrlParams = () => {
     const params = new URLSearchParams(searchParams.toString());
     if (page !== 1) params.set("page", page.toString());
     else params.delete("page");
@@ -199,7 +196,7 @@ export function CallsClient({
     if (search) params.set("q", search);
     else params.delete("q");
     return params;
-  }, [page, companyId, billing, search, isScoped, searchParams]);
+  };
 
   useEffect(() => {
     if (isFirstSyncRef.current) {
@@ -217,7 +214,8 @@ export function CallsClient({
     }, FILTER_DEBOUNCE_MS);
 
     return () => clearTimeout(handle);
-  }, [buildFetchParams, buildUrlParams, fetchCalls, pathname, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search, billing, companyId]);
 
   const filteredCalls = search
     ? calls.filter((c) => {
