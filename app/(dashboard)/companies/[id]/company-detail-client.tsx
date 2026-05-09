@@ -7,7 +7,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, PencilIcon } from "lucide-react";
 
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import type { SessionUser } from "@/lib/auth-helpers";
 import { SettingsTab } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
+import { EditCompanyNameDialog } from "./edit-company-name-dialog";
 
 interface CompanyDetail {
   id: string;
@@ -62,6 +63,7 @@ export function CompanyDetailClient({
   const searchParams = useSearchParams();
 
   const [company, setCompany] = useState<CompanyDetail | null>(null);
+  const [editNameOpen, setEditNameOpen] = useState(false);
 
   const tabParam = searchParams.get("tab");
   const activeTab: TabValue = isTabValue(tabParam) ? tabParam : DEFAULT_TAB;
@@ -143,12 +145,31 @@ export function CompanyDetailClient({
         <div className="flex items-center gap-3">
           <Avatar name={company.name} size="lg" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
-              {company.name}
-            </h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
+                {company.name}
+              </h1>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Edit company name"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setEditNameOpen(true)}
+              >
+                <PencilIcon />
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
         </div>
+
+        <EditCompanyNameDialog
+          open={editNameOpen}
+          onOpenChange={setEditNameOpen}
+          companyId={company.id}
+          currentName={company.name}
+          onSaved={fetchCompany}
+        />
 
         <TabsList variant="line" className="mt-1 h-auto gap-4 px-0">
           <TabsTrigger value="calls" className="px-1 pb-2.5">
