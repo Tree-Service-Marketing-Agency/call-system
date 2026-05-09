@@ -67,6 +67,8 @@ interface CallDetail {
   createdAt: string;
   webhook1Received: boolean;
   webhook2Received: boolean;
+  // ADR-003: only present for root/admin (gated server-side).
+  retellCost?: string | null;
   billing: {
     state: BillingState | null;
     ledgerStatus: LedgerStatus | null;
@@ -96,6 +98,13 @@ function formatDuration(ms: number | null): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+function formatRetellCost(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `$${n.toFixed(4)}`;
 }
 
 function formatTime(seconds: number): string {
@@ -587,6 +596,13 @@ export function CallDetailSheet({
                     value={formatCents(call.billing.amountCents)}
                     mono
                   />
+                  {call.retellCost !== undefined && (
+                    <DetailField
+                      label="Real Cost"
+                      value={formatRetellCost(call.retellCost)}
+                      mono
+                    />
+                  )}
                   {call.billing.state === "Charged" &&
                     call.billing.invoiceUrl && (
                       <DetailField

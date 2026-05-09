@@ -6,6 +6,7 @@
 |---|---|---|---|
 | [001](./adr-001-void-status-for-non-billable-calls.md) | Marcar llamadas no cobrables como nuevo status `void` en `billing_ledger` | Aceptado | 2026-05-04 |
 | [002](./adr-002-url-state-for-list-filters.md) | Estado de filtros en URL para listas del dashboard | Aceptado | 2026-05-04 |
+| [003](./adr-003-retell-cost-column-and-visibility.md) | Columna `retell_cost` (numeric USD) y visibilidad solo agencia | Aceptado | 2026-05-09 |
 
 ---
 

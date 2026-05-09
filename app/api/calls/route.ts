@@ -73,24 +73,33 @@ export async function GET(request: NextRequest) {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+  const isAgency = isAgencyRole(user.role);
+
+  // ADR-003: retell_cost is agency-only. Field is excluded from SELECT for
+  // staff/staff_admin so it never reaches the wire.
+  const baseSelection = {
+    id: calls.id,
+    callId: calls.callId,
+    customerName: calls.customerName,
+    customerPhone: calls.customerPhone,
+    callStatus: calls.callStatus,
+    durationMs: calls.durationMs,
+    callDate: calls.callDate,
+    createdAt: calls.createdAt,
+    audioUrl: calls.audioUrl,
+    companyId: calls.companyId,
+    companyName: companies.name,
+    webhook1Received: calls.webhook1Received,
+    webhook2Received: calls.webhook2Received,
+    ledgerStatus: billingLedger.status,
+  };
+  const selection = isAgency
+    ? { ...baseSelection, retellCost: calls.retellCost }
+    : baseSelection;
+
   const [data, totalResult] = await Promise.all([
     db
-      .select({
-        id: calls.id,
-        callId: calls.callId,
-        customerName: calls.customerName,
-        customerPhone: calls.customerPhone,
-        callStatus: calls.callStatus,
-        durationMs: calls.durationMs,
-        callDate: calls.callDate,
-        createdAt: calls.createdAt,
-        audioUrl: calls.audioUrl,
-        companyId: calls.companyId,
-        companyName: companies.name,
-        webhook1Received: calls.webhook1Received,
-        webhook2Received: calls.webhook2Received,
-        ledgerStatus: billingLedger.status,
-      })
+      .select(selection)
       .from(calls)
       .leftJoin(companies, eq(calls.companyId, companies.id))
       .leftJoin(billingLedger, eq(billingLedger.callRowId, calls.id))

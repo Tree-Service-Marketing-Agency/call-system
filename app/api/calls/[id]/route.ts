@@ -74,8 +74,15 @@ export async function GET(
   const canVoid = isRoot && ledgerStatus === "pending";
   const canRestore = isRoot && ledgerStatus === "void";
 
+  // ADR-003: retell_cost is agency-only. Strip it from the response for
+  // staff/staff_admin so it never reaches the browser.
+  const { retellCost, ...callWithoutCost } = row.call;
+  const callPayload = isAgencyRole(user.role)
+    ? { ...callWithoutCost, retellCost }
+    : callWithoutCost;
+
   return NextResponse.json({
-    ...row.call,
+    ...callPayload,
     companyName: row.companyName,
     billing: {
       state,

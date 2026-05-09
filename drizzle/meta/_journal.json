@@ -22,6 +22,20 @@
       "when": 1777928807687,
       "tag": "0002_stiff_chamber",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778365835698,
+      "tag": "0003_late_mulholland_black",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778368003676,
+      "tag": "0004_cold_silverclaw",
+      "breakpoints": true
     }
   ]
 }

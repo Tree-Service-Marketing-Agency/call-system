@@ -50,6 +50,8 @@ interface CallRow {
   webhook1Received: boolean;
   webhook2Received: boolean;
   ledgerStatus: LedgerStatus | null;
+  // ADR-003: only present for root/admin (gated server-side).
+  retellCost?: string | null;
 }
 
 interface CallsResponse {
@@ -79,6 +81,13 @@ function parseBilling(raw: string | null): BillingFilter | null {
   return BILLING_VALUES.has(value as BillingFilter)
     ? (value as BillingFilter)
     : null;
+}
+
+function formatRetellCost(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `$${n.toFixed(2)}`;
 }
 
 function formatDuration(ms: number | null): string {
@@ -164,6 +173,8 @@ export function CallsClient({
 
   const isAgency = user.role === "root" || user.role === "admin";
   const showCompanyColumn = isAgency && !isScoped;
+  // ADR-003: Real Cost (Retell) is agency-only.
+  const showRealCostColumn = isAgency;
   const pageSize = 15;
   const isFirstSyncRef = useRef(true);
 
@@ -291,6 +302,9 @@ export function CallsClient({
                 <TableHead>Phone</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Billing</TableHead>
+                {showRealCostColumn && (
+                  <TableHead className="text-right">Real Cost</TableHead>
+                )}
                 <TableHead>Duration</TableHead>
                 <TableHead>Date</TableHead>
                 {showCompanyColumn && <TableHead>Company</TableHead>}
@@ -300,7 +314,11 @@ export function CallsClient({
               {filteredCalls.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={showCompanyColumn ? 7 : 6}
+                    colSpan={
+                      6 +
+                      (showCompanyColumn ? 1 : 0) +
+                      (showRealCostColumn ? 1 : 0)
+                    }
                     className="h-32 text-center text-sm text-muted-foreground"
                   >
                     No calls found
@@ -340,6 +358,11 @@ export function CallsClient({
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
+                      {showRealCostColumn && (
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {formatRetellCost(call.retellCost)}
+                        </TableCell>
+                      )}
                       <TableCell className="tabular-nums">
                         {formatDuration(call.durationMs)}
                       </TableCell>

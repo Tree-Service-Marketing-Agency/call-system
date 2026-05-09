@@ -5,6 +5,8 @@ import {
   boolean,
   integer,
   bigint,
+  numeric,
+  jsonb,
   index,
   uniqueIndex,
   pgEnum,
@@ -171,6 +173,12 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
 
 // ─── Calls ───────────────────────────────────────────────────
 
+export type TranscriptTurn = {
+  role: "agent" | "user";
+  content: string;
+};
+
+
 export const calls = pgTable(
   "calls",
   {
@@ -200,7 +208,10 @@ export const calls = pgTable(
     endTimestamp: bigint("end_timestamp", { mode: "number" }),
     durationMs: integer("duration_ms"),
     audioUrl: text("audio_url"),
-    retellCost: text("retell_cost"),
+    // USD dollars decimal. Visible only to root/admin (ADR-003).
+    retellCost: numeric("retell_cost", { precision: 10, scale: 6 }),
+    // ADR-004: filtered transcript [{role, content}] from n8n.
+    transcript: jsonb("transcript").$type<TranscriptTurn[]>(),
     // Billing
     billingPriceCents: integer("billing_price_cents"),
     billingCountedAt: timestamp("billing_counted_at"),

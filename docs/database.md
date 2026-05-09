@@ -47,8 +47,8 @@ erDiagram
         int end_timestamp
         int duration_ms
         string audio_url
-        decimal call_cost "Costo Retell"
-        decimal billed_amount "Precio fijo cobrado al cliente"
+        numeric retell_cost "Costo real Retell en USD (solo agencia)"
+        int billing_price_cents "Precio fijo cobrado al cliente, en cents"
         datetime created_at
         datetime updated_at
     }
@@ -143,8 +143,8 @@ Cada llamada registrada. Se llena en dos fases (webhook 1: datos cliente, webhoo
 | end_timestamp | BIGINT | Timestamp de fin (ms) |
 | duration_ms | INT | Duracion en milisegundos |
 | audio_url | VARCHAR | URL del audio de la llamada |
-| call_cost | DECIMAL | Costo de la llamada en Retell |
-| billed_amount | DECIMAL | Precio fijo cobrado al cliente |
+| retell_cost | NUMERIC(10,6) | Costo real Retell en USD dolares. Solo visible para root/admin. Ver ADR-003 |
+| billing_price_cents | INTEGER | Precio fijo cobrado al cliente, en centavos USD |
 | created_at | TIMESTAMP | Fecha de creacion del registro |
 | updated_at | TIMESTAMP | Ultima actualizacion |
 
@@ -175,6 +175,7 @@ Configuracion del precio por llamada. Solo el root puede modificarlo. Se guarda 
 - **UUID vs INT:** UUIDs para evitar IDs predecibles en URLs y facilitar integracion futura.
 - **agent_id como VARCHAR:** Es un ID externo de Retell (formato `agent_xxx`), no un UUID propio.
 - **call_id UNIQUE:** Permite que el webhook 2 haga UPDATE sobre el registro creado por el webhook 1.
-- **billed_amount en calls:** Se guarda el precio al momento de la llamada para que cambios futuros en billing_config no afecten llamadas pasadas.
+- **billing_price_cents en calls:** Se guarda el precio al momento de la llamada para que cambios futuros en billing_config no afecten llamadas pasadas.
+- **retell_cost en USD dolares (numeric), no en cents:** Decision documentada en ADR-003. n8n preprocesa el costo de Retell y lo manda como decimal en dolares. Se guarda tal cual con precision sub-centavo. Inconsistencia deliberada con billing_price_cents (integer cents).
 - **company_id en calls:** Se deriva del agent_id al recibir el webhook, evitando JOINs innecesarios en queries frecuentes.
 - **billing_config como tabla separada:** Permite historico de precios y saber que precio estaba vigente en cada momento.
