@@ -73,12 +73,30 @@ export async function PATCH(
   }
 
   const body = (await request.json().catch(() => ({}))) as {
+    name?: unknown;
     notificationPhones?: unknown;
     leadSnapWebhook?: unknown;
     agentIds?: unknown;
   };
 
   const companyUpdates: Record<string, unknown> = {};
+
+  if ("name" in body) {
+    if (typeof body.name !== "string") {
+      return NextResponse.json(
+        { error: "name must be a string" },
+        { status: 400 }
+      );
+    }
+    const trimmed = body.name.trim();
+    if (trimmed.length === 0) {
+      return NextResponse.json(
+        { error: "name cannot be empty" },
+        { status: 400 }
+      );
+    }
+    companyUpdates.name = trimmed;
+  }
 
   if ("notificationPhones" in body) {
     if (
