@@ -1,4 +1,4 @@
-import { sql, eq, and, isNull } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   companies,
@@ -58,38 +58,47 @@ async function recoverStuckCharging(runId: string): Promise<number> {
 
 async function logSkippedCompanies(
   runId: string,
-  thresholdCents: number
+  thresholdCalls: number
 ): Promise<{
   noPaymentMethod: number;
   paymentPending: number;
   uncollectible: number;
 }> {
-  // No payment method but balance crossed the threshold.
-  const noPm = await db
-    .select({
-      id: companies.id,
-      name: companies.name,
-      balance: companies.currentBalanceCents,
-      lastWarn: companies.lastNoPaymentWarningAt,
-    })
-    .from(companies)
-    .where(
-      and(
-        sql`${companies.currentBalanceCents} >= ${thresholdCents}`,
-        isNull(companies.stripePaymentMethodId)
-      )
-    );
+  // No payment method but pending call count crossed the threshold.
+  const noPm = await db.execute(sql`
+    SELECT c.id, c.name, c.current_balance_cents AS balance,
+           c.last_no_payment_warning_at AS last_warn,
+           COUNT(bl.id)::int AS pending_count
+    FROM companies c
+    LEFT JOIN billing_ledger bl
+      ON bl.company_id = c.id AND bl.status = 'pending'
+    WHERE c.stripe_payment_method_id IS NULL
+    GROUP BY c.id
+    HAVING COUNT(bl.id) >= ${thresholdCalls}
+  `);
+  const noPmRows = (
+    noPm as unknown as {
+      rows: Array<{
+        id: string;
+        name: string;
+        balance: number;
+        last_warn: Date | null;
+        pending_count: number;
+      }>;
+    }
+  ).rows;
 
   const now = Date.now();
-  for (const c of noPm) {
-    const lastWarnTs = c.lastWarn ? new Date(c.lastWarn).getTime() : 0;
+  for (const c of noPmRows) {
+    const lastWarnTs = c.last_warn ? new Date(c.last_warn).getTime() : 0;
     const ageDays = (now - lastWarnTs) / (1000 * 60 * 60 * 24);
-    if (!c.lastWarn || ageDays >= NO_PAYMENT_METHOD_THROTTLE_DAYS) {
+    if (!c.last_warn || ageDays >= NO_PAYMENT_METHOD_THROTTLE_DAYS) {
       notifyNoPaymentMethod({
         companyId: c.id,
         companyName: c.name,
         balanceCents: c.balance,
-        thresholdCents,
+        pendingCallsCount: c.pending_count,
+        thresholdCalls,
       });
       await db
         .update(companies)
@@ -121,7 +130,7 @@ async function logSkippedCompanies(
   }
 
   return {
-    noPaymentMethod: noPm.length,
+    noPaymentMethod: noPmRows.length,
     paymentPending: pending.length,
     uncollectible: uncollectible.length,
   };
@@ -167,13 +176,12 @@ async function chargeOneCompany(
     if (!company) return null;
 
     const config = await tx.query.businessConfig.findFirst();
-    const threshold = config?.billingThresholdCents ?? 5000;
+    const thresholdCalls = config?.billingThresholdCalls ?? 25;
 
     if (
       company.billing_status !== "idle" ||
       !company.stripe_payment_method_id ||
-      !company.stripe_customer_id ||
-      company.current_balance_cents < threshold
+      !company.stripe_customer_id
     ) {
       return null;
     }
@@ -194,7 +202,9 @@ async function chargeOneCompany(
       );
     const totalCents = Number(pendingTotal[0]?.sum ?? 0);
     const entryCount = Number(pendingTotal[0]?.cnt ?? 0);
-    if (totalCents <= 0 || entryCount === 0) return null;
+    // Re-check the trigger inside the transaction: a void racing with candidate
+    // selection could have dropped the count below the threshold.
+    if (entryCount < thresholdCalls || totalCents <= 0) return null;
 
     const [invoice] = await tx
       .insert(invoices)
@@ -359,16 +369,24 @@ export async function runBillingChargeRun(args: {
   const recoveredCount = await recoverStuckCharging(runId);
 
   const config = await db.query.businessConfig.findFirst();
-  const thresholdCents = config?.billingThresholdCents ?? 5000;
+  const thresholdCalls = config?.billingThresholdCalls ?? 25;
 
-  // Candidate selection. We pick IDs in a single short query so the FOR
-  // UPDATE SKIP LOCKED only holds while we're listing them; chargeOneCompany
-  // re-locks each row inside its own transaction.
+  // Candidate selection. Pick companies with >= thresholdCalls ledger entries
+  // in `pending`. The GROUP BY / HAVING lives inside a subquery because
+  // PostgreSQL forbids combining FOR UPDATE with aggregation. The outer
+  // SELECT projects plain rows so SKIP LOCKED is legal — chargeOneCompany
+  // re-locks each row in its own transaction and re-checks the count there.
   const candidatesResult = await db.execute(sql`
     SELECT id FROM companies
-    WHERE current_balance_cents >= ${thresholdCents}
-      AND billing_status = 'idle'
+    WHERE billing_status = 'idle'
       AND stripe_payment_method_id IS NOT NULL
+      AND id IN (
+        SELECT company_id
+        FROM billing_ledger
+        WHERE status = 'pending'
+        GROUP BY company_id
+        HAVING COUNT(*) >= ${thresholdCalls}
+      )
     FOR UPDATE SKIP LOCKED
   `);
   const candidates = (
@@ -384,7 +402,7 @@ export async function runBillingChargeRun(args: {
     else invoicesFailed++;
   }
 
-  const skipped = await logSkippedCompanies(runId, thresholdCents);
+  const skipped = await logSkippedCompanies(runId, thresholdCalls);
 
   const result: ChargeRunResult = {
     runId,

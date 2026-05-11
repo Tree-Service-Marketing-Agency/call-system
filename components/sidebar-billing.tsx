@@ -10,7 +10,8 @@ interface SidebarBillingProps {
 
 interface BillingSummary {
   balanceCents: number;
-  thresholdCents: number;
+  pendingCallsCount: number;
+  thresholdCalls: number;
 }
 
 export function SidebarBilling({}: SidebarBillingProps) {
@@ -23,7 +24,8 @@ export function SidebarBilling({}: SidebarBillingProps) {
         if (typeof d.balanceCents === "number") {
           setData({
             balanceCents: d.balanceCents,
-            thresholdCents: d.thresholdCents,
+            pendingCallsCount: d.pendingCallsCount ?? 0,
+            thresholdCalls: d.thresholdCalls,
           });
         }
       })
@@ -31,11 +33,15 @@ export function SidebarBilling({}: SidebarBillingProps) {
   }, []);
 
   const balance = data ? `$${(data.balanceCents / 100).toFixed(2)}` : "—";
-  const threshold = data ? `$${(data.thresholdCents / 100).toFixed(2)}` : "";
+  const counter = data
+    ? `${data.pendingCallsCount} / ${data.thresholdCalls} calls`
+    : "";
   const pct = data
     ? Math.min(
         100,
-        Math.round((data.balanceCents / Math.max(1, data.thresholdCents)) * 100)
+        Math.round(
+          (data.pendingCallsCount / Math.max(1, data.thresholdCalls)) * 100
+        )
       )
     : 0;
   const barColor =
@@ -60,7 +66,7 @@ export function SidebarBilling({}: SidebarBillingProps) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-xs text-muted-foreground">of {threshold}</span>
+          <span className="text-xs text-muted-foreground">{counter}</span>
         </div>
       )}
     </Link>

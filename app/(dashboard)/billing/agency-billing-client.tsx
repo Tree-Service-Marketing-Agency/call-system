@@ -57,6 +57,7 @@ interface CompanyRow {
   id: string;
   name: string;
   balanceCents: number;
+  pendingCallsCount: number;
   billingStatus: string;
   hasPaymentMethod: boolean;
   lastInvoice: {
@@ -82,7 +83,7 @@ interface InvoiceRow {
 
 interface GlobalBillingData {
   scope: "global";
-  thresholdCents: number;
+  thresholdCalls: number;
   pricePerCallCents: number;
   stats: {
     paidCentsThisMonth: number;
@@ -103,13 +104,23 @@ function usd(cents: number | null | undefined): string {
   return `$${((cents ?? 0) / 100).toFixed(2)}`;
 }
 
-function effectiveFeePct(thresholdCents: number): string {
+function effectiveFeePct(
+  thresholdCalls: number,
+  pricePerCallCents: number,
+): string {
+  const thresholdCents = thresholdCalls * pricePerCallCents;
   if (thresholdCents <= 0) return "—";
   const thresholdUsd = thresholdCents / 100;
   const cardFee = thresholdUsd * 0.029 + 0.3;
   const invoicingFee = Math.min(2, thresholdUsd * 0.004);
   const total = cardFee + invoicingFee;
   return ((total / thresholdUsd) * 100).toFixed(1);
+}
+
+function parsePositiveInt(input: string): number | null {
+  const n = Number(input);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
 }
 
 function formatDelta(
@@ -228,13 +239,19 @@ function StatusBadge({
 }
 
 interface ThresholdCardProps {
-  thresholdCents: number;
+  thresholdCalls: number;
+  pricePerCallCents: number;
   isRoot: boolean;
   onSaved: () => void;
 }
 
-function ThresholdCard({ thresholdCents, isRoot, onSaved }: ThresholdCardProps) {
-  const initial = (thresholdCents / 100).toFixed(2);
+function ThresholdCard({
+  thresholdCalls,
+  pricePerCallCents,
+  isRoot,
+  onSaved,
+}: ThresholdCardProps) {
+  const initial = String(thresholdCalls);
   const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -247,13 +264,13 @@ function ThresholdCard({ thresholdCents, isRoot, onSaved }: ThresholdCardProps) 
   const dirty = value !== initial;
 
   async function save() {
-    const cents = Math.round(Number(value) * 100);
-    if (!Number.isFinite(cents) || cents < 0) return;
+    const calls = parsePositiveInt(value);
+    if (calls == null) return;
     setSaving(true);
     await fetch("/api/business-model", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ billingThresholdCents: cents }),
+      body: JSON.stringify({ billingThresholdCalls: calls }),
     });
     setSaving(false);
     onSaved();
@@ -289,25 +306,20 @@ function ThresholdCard({ thresholdCents, isRoot, onSaved }: ThresholdCardProps) 
       <div className="px-5 py-4">
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="threshold">Billing threshold</Label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">
-                $
-              </span>
-              <Input
-                id="threshold"
-                type="number"
-                step="0.01"
-                min="0"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                disabled={!isRoot}
-                className="w-36 pl-6 font-mono tabular-nums"
-              />
-            </div>
+            <Label htmlFor="threshold">Billing threshold (calls)</Label>
+            <Input
+              id="threshold"
+              type="number"
+              step="1"
+              min="1"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={!isRoot}
+              className="w-36 font-mono tabular-nums"
+            />
             <span className="text-[11px] text-muted-foreground">
               Effective Stripe fee at this threshold: ~
-              {effectiveFeePct(Math.round(Number(value || 0) * 100))}%
+              {effectiveFeePct(Number(value || 0), pricePerCallCents)}%
             </span>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -493,7 +505,8 @@ export function AgencyBillingClient({ role }: Props) {
       </StatsGrid>
 
       <ThresholdCard
-        thresholdCents={data.thresholdCents}
+        thresholdCalls={data.thresholdCalls}
+        pricePerCallCents={data.pricePerCallCents}
         isRoot={role === "root"}
         onSaved={refresh}
       />
@@ -549,6 +562,7 @@ export function AgencyBillingClient({ role }: Props) {
           <TableHeader>
             <TableRow>
               <TableHead>Company</TableHead>
+              <TableHead className="text-right">Pending calls</TableHead>
               <TableHead className="text-right">Balance</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last invoice</TableHead>
@@ -560,7 +574,7 @@ export function AgencyBillingClient({ role }: Props) {
             {companyPageRows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="h-32 text-center text-sm text-muted-foreground"
                 >
                   No companies found
@@ -585,6 +599,17 @@ export function AgencyBillingClient({ role }: Props) {
                           )}
                       </div>
                     </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <span
+                      className={
+                        c.pendingCallsCount >= data.thresholdCalls
+                          ? "font-medium text-amber-700"
+                          : ""
+                      }
+                    >
+                      {c.pendingCallsCount} / {data.thresholdCalls}
+                    </span>
                   </TableCell>
                   <TableCell
                     className={`text-right tabular-nums ${

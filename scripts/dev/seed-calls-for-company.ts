@@ -103,10 +103,9 @@ async function main() {
     );
   }
   const priceCents = config.pricePerCallCents;
-  const thresholdCents = config.billingThresholdCents;
+  const thresholdCalls = config.billingThresholdCalls;
   const totalCents = priceCents * options.calls;
   const newBalanceCents = company.currentBalanceCents + totalCents;
-  const crossesThreshold = newBalanceCents >= thresholdCents;
 
   const createdCallIds: Array<{ rowId: string; callId: string }> = [];
 
@@ -184,8 +183,8 @@ async function main() {
         totalAddedCents: totalCents,
         previousBalanceCents: company.currentBalanceCents,
         newBalanceCents,
-        thresholdCents,
-        crossesThreshold,
+        thresholdCalls,
+        addedCallCount: options.calls,
         callRowIds: createdCallIds.map((c) => c.rowId),
         callIds: createdCallIds.map((c) => c.callId),
       },
@@ -193,14 +192,6 @@ async function main() {
       2
     )
   );
-
-  if (!crossesThreshold) {
-    console.log(
-      `\nWarning: new balance (${newBalanceCents}¢) is below threshold ` +
-        `(${thresholdCents}¢). The charge cron will skip this company until ` +
-        `the balance crosses the threshold.`
-    );
-  }
   if (!company.stripeCustomerId || !company.stripePaymentMethodId) {
     console.log(
       "\nWarning: company is missing Stripe IDs. Attach a Stripe customer + " +

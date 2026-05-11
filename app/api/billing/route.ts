@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, and } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, invoices, businessConfig } from "@/lib/db/schema";
+import {
+  companies,
+  invoices,
+  businessConfig,
+  billingLedger,
+} from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 import { stripe } from "@/lib/stripe";
 
@@ -52,6 +57,21 @@ async function loadInvoices(companyId: string, limit = 50) {
     .limit(limit);
 }
 
+async function countPendingCalls(companyId: string): Promise<number> {
+  const result = await db
+    .select({
+      cnt: sql<number>`COUNT(*)::int`.as("cnt"),
+    })
+    .from(billingLedger)
+    .where(
+      and(
+        eq(billingLedger.companyId, companyId),
+        eq(billingLedger.status, "pending")
+      )
+    );
+  return Number(result[0]?.cnt ?? 0);
+}
+
 async function loadGlobalInvoices(limit = 100) {
   return db
     .select({
@@ -80,7 +100,7 @@ export async function GET(request: NextRequest) {
   }
 
   const config = await db.query.businessConfig.findFirst();
-  const thresholdCents = config?.billingThresholdCents ?? 5000;
+  const thresholdCalls = config?.billingThresholdCalls ?? 25;
 
   if (!isAgencyRole(user.role)) {
     // staff_admin / staff: their own company only.
@@ -88,7 +108,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         scope: "company",
         balanceCents: 0,
-        thresholdCents,
+        pendingCallsCount: 0,
+        thresholdCalls,
         billingStatus: "idle",
         paymentMethod: null,
         invoices: [],
@@ -106,9 +127,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
-    const [paymentMethod, invoiceRows] = await Promise.all([
+    const [paymentMethod, invoiceRows, pendingCount] = await Promise.all([
       loadPaymentMethod(company.stripeCustomerId, company.stripePaymentMethodId),
       loadInvoices(company.id),
+      countPendingCalls(company.id),
     ]);
 
     return NextResponse.json({
@@ -116,7 +138,8 @@ export async function GET(request: NextRequest) {
       companyId: company.id,
       companyName: company.name,
       balanceCents: company.currentBalanceCents,
-      thresholdCents,
+      pendingCallsCount: pendingCount,
+      thresholdCalls,
       billingStatus: company.billingStatus,
       hasStripeCustomer: !!company.stripeCustomerId,
       paymentMethod,
@@ -135,9 +158,10 @@ export async function GET(request: NextRequest) {
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
-    const [paymentMethod, invoiceRows] = await Promise.all([
+    const [paymentMethod, invoiceRows, pendingCount] = await Promise.all([
       loadPaymentMethod(company.stripeCustomerId, company.stripePaymentMethodId),
       loadInvoices(company.id),
+      countPendingCalls(company.id),
     ]);
 
     return NextResponse.json({
@@ -145,7 +169,8 @@ export async function GET(request: NextRequest) {
       companyId: company.id,
       companyName: company.name,
       balanceCents: company.currentBalanceCents,
-      thresholdCents,
+      pendingCallsCount: pendingCount,
+      thresholdCalls,
       billingStatus: company.billingStatus,
       hasStripeCustomer: !!company.stripeCustomerId,
       paymentMethod,
@@ -188,32 +213,49 @@ export async function GET(request: NextRequest) {
   const prevFailedCount = Number(aggregates?.prevFailedCount ?? 0);
   const uncollectibleCompanies = Number(uncollectibleResult[0]?.count ?? 0);
 
-  const companyRows = await db
-    .select({
-      id: companies.id,
-      name: companies.name,
-      balanceCents: companies.currentBalanceCents,
-      billingStatus: companies.billingStatus,
-      stripeCustomerId: companies.stripeCustomerId,
-      stripePaymentMethodId: companies.stripePaymentMethodId,
-      lastInvoiceCreatedAt: sql<Date | null>`(
-        SELECT created_at FROM invoices i WHERE i.company_id = ${companies.id} ORDER BY created_at DESC LIMIT 1
-      )`.as("last_invoice_created_at"),
-      lastInvoiceAmountCents: sql<number | null>`(
-        SELECT amount_cents FROM invoices i WHERE i.company_id = ${companies.id} ORDER BY created_at DESC LIMIT 1
-      )`.as("last_invoice_amount_cents"),
-      lastInvoiceStatus: sql<string | null>`(
-        SELECT status FROM invoices i WHERE i.company_id = ${companies.id} ORDER BY created_at DESC LIMIT 1
-      )`.as("last_invoice_status"),
-    })
-    .from(companies)
-    .orderBy(desc(companies.currentBalanceCents));
+  const companyRowsResult = await db.execute(sql`
+    SELECT
+      c.id,
+      c.name,
+      c.current_balance_cents AS balance_cents,
+      c.billing_status,
+      c.stripe_payment_method_id,
+      COALESCE(SUM(CASE WHEN bl.status = 'pending' THEN 1 ELSE 0 END), 0)::int AS pending_calls_count,
+      (
+        SELECT created_at FROM invoices i WHERE i.company_id = c.id ORDER BY created_at DESC LIMIT 1
+      ) AS last_invoice_created_at,
+      (
+        SELECT amount_cents FROM invoices i WHERE i.company_id = c.id ORDER BY created_at DESC LIMIT 1
+      ) AS last_invoice_amount_cents,
+      (
+        SELECT status FROM invoices i WHERE i.company_id = c.id ORDER BY created_at DESC LIMIT 1
+      ) AS last_invoice_status
+    FROM companies c
+    LEFT JOIN billing_ledger bl ON bl.company_id = c.id
+    GROUP BY c.id
+    ORDER BY pending_calls_count DESC, c.current_balance_cents DESC
+  `);
+  const companyRows = (
+    companyRowsResult as unknown as {
+      rows: Array<{
+        id: string;
+        name: string;
+        balance_cents: number;
+        billing_status: string;
+        stripe_payment_method_id: string | null;
+        pending_calls_count: number;
+        last_invoice_created_at: Date | null;
+        last_invoice_amount_cents: number | null;
+        last_invoice_status: string | null;
+      }>;
+    }
+  ).rows;
 
   const invoiceRows = await loadGlobalInvoices(100);
 
   return NextResponse.json({
     scope: "global",
-    thresholdCents,
+    thresholdCalls,
     pricePerCallCents: config?.pricePerCallCents ?? 100,
     stats: {
       paidCentsThisMonth,
@@ -229,14 +271,15 @@ export async function GET(request: NextRequest) {
     companies: companyRows.map((c) => ({
       id: c.id,
       name: c.name,
-      balanceCents: c.balanceCents,
-      billingStatus: c.billingStatus,
-      hasPaymentMethod: !!c.stripePaymentMethodId,
-      lastInvoice: c.lastInvoiceCreatedAt
+      balanceCents: c.balance_cents,
+      pendingCallsCount: c.pending_calls_count,
+      billingStatus: c.billing_status,
+      hasPaymentMethod: !!c.stripe_payment_method_id,
+      lastInvoice: c.last_invoice_created_at
         ? {
-            createdAt: c.lastInvoiceCreatedAt,
-            amountCents: c.lastInvoiceAmountCents,
-            status: c.lastInvoiceStatus,
+            createdAt: c.last_invoice_created_at,
+            amountCents: c.last_invoice_amount_cents,
+            status: c.last_invoice_status,
           }
         : null,
     })),

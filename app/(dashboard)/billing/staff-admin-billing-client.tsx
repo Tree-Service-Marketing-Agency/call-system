@@ -51,7 +51,8 @@ interface BillingData {
   companyId?: string;
   companyName?: string;
   balanceCents: number;
-  thresholdCents: number;
+  pendingCallsCount: number;
+  thresholdCalls: number;
   billingStatus: "idle" | "charging" | "payment_pending" | "uncollectible";
   hasStripeCustomer?: boolean;
   paymentMethod: PaymentMethod | null;
@@ -135,7 +136,9 @@ export function StaffAdminBillingClient() {
 
   const pct = Math.min(
     100,
-    Math.round((data.balanceCents / Math.max(1, data.thresholdCents)) * 100)
+    Math.round(
+      (data.pendingCallsCount / Math.max(1, data.thresholdCalls)) * 100
+    )
   );
   const barColor =
     pct >= 100
@@ -149,12 +152,17 @@ export function StaffAdminBillingClient() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Current balance</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending calls</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <p className="text-3xl font-bold">{usd(data.balanceCents)}</p>
+            <p className="text-3xl font-bold">
+              {data.pendingCallsCount}{" "}
+              <span className="text-base font-normal text-muted-foreground">
+                / {data.thresholdCalls}
+              </span>
+            </p>
             <p className="text-xs text-muted-foreground">
-              of {usd(data.thresholdCents)} (global threshold)
+              {usd(data.balanceCents)} accumulated
             </p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
@@ -163,8 +171,8 @@ export function StaffAdminBillingClient() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Your next charge will be processed automatically when your
-              balance reaches the threshold.
+              Your next charge will be processed automatically when you reach
+              the threshold.
             </p>
           </CardContent>
         </Card>

@@ -101,18 +101,19 @@ export function notifyNoPaymentMethod(args: {
   companyId: string;
   companyName: string;
   balanceCents: number;
-  thresholdCents: number;
+  pendingCallsCount: number;
+  thresholdCalls: number;
 }) {
   const balanceUsd = formatUsd(args.balanceCents);
-  const thresholdUsd = formatUsd(args.thresholdCents);
 
   notifyRoot({
     event: "no_payment_method",
     severity: "info",
     company_id: args.companyId,
     company_name: args.companyName,
+    pending_calls_count: args.pendingCallsCount,
+    threshold_calls: args.thresholdCalls,
     balance_usd: balanceUsd,
-    threshold_usd: thresholdUsd,
     message: `${args.companyName} crossed the threshold but has no card on file.`,
   });
 
@@ -120,10 +121,11 @@ export function notifyNoPaymentMethod(args: {
     event: "no_payment_method",
     severity: "warning",
     recipient_company_id: args.companyId,
+    pending_calls_count: args.pendingCallsCount,
+    threshold_calls: args.thresholdCalls,
     balance_usd: balanceUsd,
-    threshold_usd: thresholdUsd,
     setup_url: "/billing",
     message:
-      "Your company has a pending balance but no payment method on file. Add a card to avoid interruptions.",
+      "Your company has reached the billing threshold but has no payment method on file. Add a card to avoid interruptions.",
   });
 }

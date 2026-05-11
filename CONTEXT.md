@@ -1,6 +1,6 @@
 # Call System — Domain Context
 
-Call System es el dashboard de la agencia para gestionar llamadas de voice agents (Retell) de compañías de tree service y cobrarles automáticamente vía Stripe por umbral acumulado. Este documento fija el vocabulario de dominio que aparece tanto en el código como en la UI. Para el modelo financiero completo ver `prd/stripe.md`.
+Call System es el dashboard de la agencia para gestionar llamadas de voice agents (Retell) de compañías de tree service y cobrarles automáticamente vía Stripe cuando acumulan un cierto número de llamadas. Este documento fija el vocabulario de dominio que aparece tanto en el código como en la UI. Para el modelo financiero completo ver `prd/stripe.md`.
 
 ## Language
 
@@ -47,6 +47,23 @@ _Avoid_: "cancelada", "rechazada" (se confunden con `disconnection_reason`).
 **Partial**:
 La **Call** sólo recibió `call_data` y aún no tiene `call_ended`. Puede transitar a **Pending** si después llega `call_ended` con un `disconnection_reason` facturable.
 
+### Pricing & threshold
+
+**Price per call**:
+Precio en centavos que se aplica a una **Call** al momento de crear su **Ledger entry** (snapshot en `calls.billing_price_cents`). Se configura globalmente en `business_config.price_per_call_cents`. Cambiarlo no afecta llamadas ya registradas.
+_Avoid_: "rate", "tarifa".
+
+**Billing threshold**:
+Cantidad de **Calls** con **Ledger entry** en `pending` que una compañía debe acumular para que el cron la considere candidata a cobro. Se almacena como conteo entero en `business_config.billing_threshold_calls` (default `25`). **No** es un monto en dólares.
+_Avoid_: "límite de saldo", "umbral en dólares".
+
+**Pending balance**:
+Suma denormalizada en centavos de las **Ledger entries** en `pending` de la compañía, almacenada en `companies.current_balance_cents`. Es el monto que se facturará cuando se dispare el cobro; **no** participa en la decisión de cuándo dispararlo.
+_Avoid_: "saldo deudor", "monto a cobrar" (este último se confunde con un **Invoice** ya emitido).
+
+**Pending calls count**:
+Conteo de **Ledger entries** en `pending` para una compañía. Métrica comparada contra el **Billing threshold** en el cron. No se almacena como columna — se calcula on-the-fly desde el ledger.
+
 ### Acciones sobre el ledger
 
 **Void** (verbo):
@@ -64,6 +81,7 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
   - `pending → reserved → paid` (camino del cron)
   - `pending ↔ void` (Void / Restore manuales por root)
 - Una entry en `void` no puede llegar a `reserved` ni a `paid` sin pasar primero por `pending` vía **Restore**.
+- El cron dispara cobro cuando **Pending calls count** ≥ **Billing threshold**. El **Pending balance** define el monto del **Invoice**, no el trigger. **Void** y **Restore** modifican ambos (count y balance) al cambiar el status del ledger.
 
 ## Example dialogue
 
@@ -78,3 +96,4 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 - **"Non-billable"** se usaba ambiguo para "sistema la filtró" y "humano la excluyó". Resuelto: las llamadas que el sistema descarta no muestran badge (celda `—`); **Marked non-billable** = humano (`ledger.status = 'void'`).
 - **"Status"** estaba sobrecargado en `/calls`: la columna existente muestra `callStatus` de Retell, y los billing states también son "estados". Resuelto: la columna existente sigue siendo "Status" (Retell); la nueva columna se llama "Billing".
 - **"Charge"** vs **"Bill"**: el código usa `charge` para la operación de cobro vía Stripe (`charge-cron.ts`); la UI usa "Billing" como sección. Mantener: `charge` = verbo/operación; "Billing" = concepto/sección de UI.
+- **"Threshold"** originalmente era un monto en dólares (`billing_threshold_cents`); ahora es un conteo de llamadas (`billing_threshold_calls`, default 25). El `current_balance_cents` ya no participa en el trigger — sólo determina el monto del **Invoice** una vez que el conteo dispara el cobro. Ver ADR-005.
