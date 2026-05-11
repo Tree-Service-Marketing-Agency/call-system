@@ -18,7 +18,7 @@ async function seed() {
 
   await db.insert(businessConfig).values({
     pricePerCallCents: 100,
-    billingThresholdCents: 5000,
+    billingThresholdCalls: 25,
   });
 
   console.log("Seed completed: root user + business config created");

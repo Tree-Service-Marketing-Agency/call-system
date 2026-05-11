@@ -23,11 +23,17 @@ function usdStringToCents(usd: string): number | null {
   return Math.round(n * 100);
 }
 
+function parsePositiveInt(input: string): number | null {
+  const n = Number(input);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
 export function BusinessModelClient() {
   const [priceUsd, setPriceUsd] = useState("");
   const [savedPriceCents, setSavedPriceCents] = useState<number | null>(null);
-  const [thresholdUsd, setThresholdUsd] = useState("");
-  const [savedThresholdCents, setSavedThresholdCents] = useState<number | null>(
+  const [thresholdCalls, setThresholdCalls] = useState("");
+  const [savedThresholdCalls, setSavedThresholdCalls] = useState<number | null>(
     null
   );
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
@@ -40,16 +46,16 @@ export function BusinessModelClient() {
       .then((data) => {
         setPriceUsd(centsToUsdString(data.pricePerCallCents));
         setSavedPriceCents(data.pricePerCallCents);
-        setThresholdUsd(centsToUsdString(data.billingThresholdCents));
-        setSavedThresholdCents(data.billingThresholdCents);
+        setThresholdCalls(String(data.billingThresholdCalls ?? ""));
+        setSavedThresholdCalls(data.billingThresholdCalls);
         setUpdatedAt(data.updatedAt);
       });
   }, []);
 
   async function handleSave() {
     const priceCents = usdStringToCents(priceUsd);
-    const thresholdCents = usdStringToCents(thresholdUsd);
-    if (priceCents == null || thresholdCents == null) return;
+    const thresholdCallsValue = parsePositiveInt(thresholdCalls);
+    if (priceCents == null || thresholdCallsValue == null) return;
 
     setLoading(true);
     setSuccess(false);
@@ -59,7 +65,7 @@ export function BusinessModelClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         pricePerCallCents: priceCents,
-        billingThresholdCents: thresholdCents,
+        billingThresholdCalls: thresholdCallsValue,
       }),
     });
 
@@ -67,7 +73,7 @@ export function BusinessModelClient() {
 
     if (res.ok) {
       setSavedPriceCents(priceCents);
-      setSavedThresholdCents(thresholdCents);
+      setSavedThresholdCalls(thresholdCallsValue);
       setUpdatedAt(new Date().toISOString());
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -76,7 +82,7 @@ export function BusinessModelClient() {
 
   const dirty =
     usdStringToCents(priceUsd) !== savedPriceCents ||
-    usdStringToCents(thresholdUsd) !== savedThresholdCents;
+    parsePositiveInt(thresholdCalls) !== savedThresholdCalls;
 
   return (
     <Card className="max-w-xl">
@@ -84,7 +90,9 @@ export function BusinessModelClient() {
         <CardTitle>Pricing</CardTitle>
         <CardDescription>
           Price applied to future calls and the global billing threshold.
-          Existing calls keep the price they were registered with.
+          Existing calls keep the price they were registered with. The
+          threshold counts pending calls — once a company reaches it, all
+          pending calls are charged together.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -102,14 +110,14 @@ export function BusinessModelClient() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="threshold">Billing threshold ($)</Label>
+              <Label htmlFor="threshold">Billing threshold (calls)</Label>
               <Input
                 id="threshold"
                 type="number"
-                step="0.01"
-                min="0"
-                value={thresholdUsd}
-                onChange={(e) => setThresholdUsd(e.target.value)}
+                step="1"
+                min="1"
+                value={thresholdCalls}
+                onChange={(e) => setThresholdCalls(e.target.value)}
               />
             </div>
           </div>

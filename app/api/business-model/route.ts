@@ -13,7 +13,7 @@ export async function GET() {
   const config = await db.query.businessConfig.findFirst();
   return NextResponse.json({
     pricePerCallCents: config?.pricePerCallCents ?? 100,
-    billingThresholdCents: config?.billingThresholdCents ?? 5000,
+    billingThresholdCalls: config?.billingThresholdCalls ?? 25,
     updatedAt: config?.updatedAt ?? null,
   });
 }
@@ -25,11 +25,11 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { pricePerCallCents, billingThresholdCents } = body;
+  const { pricePerCallCents, billingThresholdCalls } = body;
 
   const updates: {
     pricePerCallCents?: number;
-    billingThresholdCents?: number;
+    billingThresholdCalls?: number;
   } = {};
 
   if (pricePerCallCents !== undefined) {
@@ -43,15 +43,15 @@ export async function PUT(request: Request) {
     updates.pricePerCallCents = n;
   }
 
-  if (billingThresholdCents !== undefined) {
-    const n = Number(billingThresholdCents);
-    if (!Number.isInteger(n) || n < 0) {
+  if (billingThresholdCalls !== undefined) {
+    const n = Number(billingThresholdCalls);
+    if (!Number.isInteger(n) || n < 1) {
       return NextResponse.json(
-        { error: "billingThresholdCents must be a non-negative integer" },
+        { error: "billingThresholdCalls must be a positive integer" },
         { status: 400 }
       );
     }
-    updates.billingThresholdCents = n;
+    updates.billingThresholdCalls = n;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -75,7 +75,7 @@ export async function PUT(request: Request) {
   } else {
     await db.insert(businessConfig).values({
       pricePerCallCents: updates.pricePerCallCents ?? 100,
-      billingThresholdCents: updates.billingThresholdCents ?? 5000,
+      billingThresholdCalls: updates.billingThresholdCalls ?? 25,
       updatedBy: user.id,
     });
   }

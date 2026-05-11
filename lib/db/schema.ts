@@ -306,9 +306,9 @@ export const businessConfig = pgTable("business_config", {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   pricePerCallCents: integer("price_per_call_cents").notNull().default(100),
-  billingThresholdCents: integer("billing_threshold_cents")
+  billingThresholdCalls: integer("billing_threshold_calls")
     .notNull()
-    .default(5000),
+    .default(25),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   updatedBy: text("updated_by").references(() => users.id),
 });
