@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { calls, companyAgents } from "@/lib/db/schema";
+import { verifyN8nSecret } from "@/lib/webhook-auth";
 
 export async function POST(request: Request) {
+  // ADR-004: shared bearer-token auth for n8n-driven webhooks.
+  const authError = verifyN8nSecret(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const {
