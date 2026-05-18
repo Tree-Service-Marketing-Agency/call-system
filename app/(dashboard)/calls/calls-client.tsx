@@ -47,8 +47,6 @@ interface CallRow {
   createdAt: string;
   companyId: string | null;
   companyName: string | null;
-  webhook1Received: boolean;
-  webhook2Received: boolean;
   ledgerStatus: LedgerStatus | null;
   // ADR-003: only present for root/admin (gated server-side).
   retellCost?: string | null;
@@ -117,7 +115,7 @@ function formatDate(call: CallRow): { date: string; time: string } {
 }
 
 function statusBadge(status: string | null) {
-  if (!status) return <Badge variant="outline">Partial</Badge>;
+  if (!status) return <span className="text-muted-foreground">—</span>;
   const lower = status.toLowerCase();
   if (lower === "completed" || lower === "ended" || lower === "successful")
     return <Badge variant="success">{status}</Badge>;
@@ -327,10 +325,7 @@ export function CallsClient({
               ) : (
                 filteredCalls.map((call) => {
                   const { date, time } = formatDate(call);
-                  const billingState = deriveBillingState({
-                    webhook2Received: call.webhook2Received,
-                    ledgerStatus: call.ledgerStatus,
-                  });
+                  const billingState = deriveBillingState(call.ledgerStatus);
                   return (
                     <TableRow
                       key={call.id}

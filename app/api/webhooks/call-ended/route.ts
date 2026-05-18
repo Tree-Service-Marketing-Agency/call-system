@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  calls,
-  companyAgents,
-  companies,
-  type TranscriptTurn,
-} from "@/lib/db/schema";
+import { calls, companyAgents, companies } from "@/lib/db/schema";
 import { insertCallChargeLedgerEntry } from "@/lib/billing/ledger";
 import { isBillableDisconnection } from "@/lib/billing/rules";
 import { verifyN8nSecret } from "@/lib/webhook-auth";
+import { mapCallEndedPayload } from "@/lib/calls/map-call-ended-payload";
 
-// ADR-004: payload comes from n8n (Retell → n8n → Lola). Auth is a shared
-// bearer secret instead of Retell's signature.
+// ADR-004/006: payload comes from n8n (Retell → n8n → Lola). Auth is a shared
+// bearer secret. Since ADR-006, call_ended is the single ingestion webhook:
+// it carries customer data, metadata, and transcript in one event.
 export async function POST(request: Request) {
   const authError = verifyN8nSecret(request);
   if (authError) return authError;
@@ -24,6 +21,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  // ADR-004 #4 (kept by ADR-006): n8n unwraps Retell's `[{...}]` array before
+  // sending. Lola only accepts a flat object; arrays are rejected with 400.
   if (Array.isArray(payload)) {
     return NextResponse.json(
       { error: "expected object, got array" },
@@ -42,40 +41,14 @@ export async function POST(request: Request) {
 
   const call_id = callObj.call_id as string | undefined;
   const agent_id = callObj.agent_id as string | undefined;
-  // n8n's payload doesn't always include call_status; the event itself
-  // already declares the call ended, so default to "ended" when missing.
-  const call_status =
-    (callObj.call_status as string | undefined) ?? "ended";
-  const disconnection_reason = callObj.disconnection_reason as
-    | string
-    | undefined;
-  const start_timestamp = callObj.start_timestamp as number | undefined;
-  const end_timestamp = callObj.end_timestamp as number | undefined;
-  const duration_ms = callObj.duration_ms as number | undefined;
-  const audio_url = (callObj.recording_url ?? callObj.audio_url) as
-    | string
-    | undefined;
-  // ADR-003: call_cost arrives from n8n as a flat decimal in USD dollars
-  // (e.g. 0.230749). Anything that isn't a number is ignored.
-  const rawCallCost = callObj.call_cost;
-  const call_cost =
-    typeof rawCallCost === "number" && Number.isFinite(rawCallCost)
-      ? rawCallCost.toString()
-      : null;
-  const customerPhoneFromWebhook =
-    (callObj.from_number as string | undefined) ?? null;
-  const customerNameFromWebhook =
-    (callObj.name as string | undefined) ?? null;
-  const summaryFromWebhook =
-    (callObj.summary as string | undefined) ?? null;
-  const transcriptFromWebhook = filterTranscript(callObj.transcription_object);
-
   if (!call_id || !agent_id) {
     return NextResponse.json(
       { error: "call_id and agent_id are required" },
       { status: 400 }
     );
   }
+
+  const mapped = mapCallEndedPayload(callObj);
 
   const agent = await db.query.companyAgents.findFirst({
     where: eq(companyAgents.agentId, agent_id),
@@ -91,32 +64,38 @@ export async function POST(request: Request) {
     await db
       .update(calls)
       .set({
-        event,
+        event: mapped.event ?? event,
         retellEvent: "call_ended",
-        callStatus: call_status ?? null,
-        disconnectionReason: disconnection_reason ?? null,
-        startTimestamp: start_timestamp ?? null,
-        endTimestamp: end_timestamp ?? null,
-        durationMs: duration_ms ?? null,
-        audioUrl: audio_url ?? null,
-        retellCost: call_cost,
+        callStatus: mapped.callStatus,
+        disconnectionReason: mapped.disconnectionReason,
+        startTimestamp: mapped.startTimestamp,
+        endTimestamp: mapped.endTimestamp,
+        durationMs: mapped.durationMs,
+        audioUrl: mapped.audioUrl,
+        retellCost: mapped.retellCost,
         companyId: companyId ?? existing.companyId,
-        // ADR-004: customerName, summary, customerPhone follow the
-        // "don't overwrite if already populated" rule. Only fill when the
-        // existing column is null or trimmed-empty.
+        // ADR-004 #6 (kept by ADR-006): the "don't overwrite if already
+        // populated" rule now guards against n8n reprocess/retry and future
+        // manual edits. Only fill when the existing column is null/blank.
         customerName: hasValue(existing.customerName)
           ? existing.customerName
-          : customerNameFromWebhook,
-        summary: hasValue(existing.summary)
-          ? existing.summary
-          : summaryFromWebhook,
+          : mapped.customerName,
         customerPhone: hasValue(existing.customerPhone)
           ? existing.customerPhone
-          : customerPhoneFromWebhook,
+          : mapped.customerPhone,
+        summary: hasValue(existing.summary)
+          ? existing.summary
+          : mapped.summary,
+        // Remaining customer fields: keep prior value when the payload omits
+        // it so a partial retry can't wipe good data.
+        customerAddress: mapped.customerAddress ?? existing.customerAddress,
+        customerCity: mapped.customerCity ?? existing.customerCity,
+        customerZipcode: mapped.customerZipcode ?? existing.customerZipcode,
+        service: mapped.service ?? existing.service,
+        callDate: mapped.callDate ?? existing.callDate,
         // Transcript always takes the fresh version when the payload brings
         // a non-empty array; otherwise keep the previous value.
-        transcript: transcriptFromWebhook ?? existing.transcript,
-        webhook2Received: true,
+        transcript: mapped.transcript ?? existing.transcript,
         updatedAt: new Date(),
       })
       .where(eq(calls.id, existing.id));
@@ -128,32 +107,35 @@ export async function POST(request: Request) {
         callId: call_id,
         agentId: agent_id,
         companyId,
-        event,
+        event: mapped.event ?? event,
         retellEvent: "call_ended",
-        callStatus: call_status ?? null,
-        disconnectionReason: disconnection_reason ?? null,
-        startTimestamp: start_timestamp ?? null,
-        endTimestamp: end_timestamp ?? null,
-        durationMs: duration_ms ?? null,
-        audioUrl: audio_url ?? null,
-        retellCost: call_cost,
-        customerName: customerNameFromWebhook,
-        summary: summaryFromWebhook,
-        customerPhone: customerPhoneFromWebhook,
-        transcript: transcriptFromWebhook,
-        webhook1Received: false,
-        webhook2Received: true,
+        callStatus: mapped.callStatus,
+        disconnectionReason: mapped.disconnectionReason,
+        startTimestamp: mapped.startTimestamp,
+        endTimestamp: mapped.endTimestamp,
+        durationMs: mapped.durationMs,
+        audioUrl: mapped.audioUrl,
+        retellCost: mapped.retellCost,
+        customerName: mapped.customerName,
+        customerPhone: mapped.customerPhone,
+        customerAddress: mapped.customerAddress,
+        customerCity: mapped.customerCity,
+        customerZipcode: mapped.customerZipcode,
+        service: mapped.service,
+        summary: mapped.summary,
+        callDate: mapped.callDate,
+        transcript: mapped.transcript,
       })
       .returning({ id: calls.id });
     callRowId = inserted[0].id;
   }
 
-  if (!isBillableDisconnection(disconnection_reason)) {
+  if (!isBillableDisconnection(mapped.disconnectionReason)) {
     console.log(
       "[call-ended] non-billable disconnection",
       JSON.stringify({
         call_id,
-        disconnection_reason: disconnection_reason ?? null,
+        disconnection_reason: mapped.disconnectionReason,
       })
     );
     return new NextResponse(null, { status: 204 });
@@ -219,22 +201,4 @@ export async function POST(request: Request) {
 
 function hasValue(value: string | null | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-// ADR-004: keep only `role` and `content` per turn, drop turns with empty
-// content. Returns null when input is missing/invalid/empty so the caller
-// can preserve the previous DB value.
-function filterTranscript(input: unknown): TranscriptTurn[] | null {
-  if (!Array.isArray(input)) return null;
-  const turns: TranscriptTurn[] = [];
-  for (const raw of input) {
-    if (!raw || typeof raw !== "object") continue;
-    const turn = raw as { role?: unknown; content?: unknown };
-    const role = turn.role;
-    const content = turn.content;
-    if (role !== "agent" && role !== "user") continue;
-    if (typeof content !== "string" || content.trim().length === 0) continue;
-    turns.push({ role, content });
-  }
-  return turns.length > 0 ? turns : null;
 }

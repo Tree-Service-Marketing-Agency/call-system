@@ -190,7 +190,7 @@ export const calls = pgTable(
     companyId: text("company_id").references(() => companies.id, {
       onDelete: "set null",
     }),
-    // Webhook 1 — datos del cliente
+    // ADR-006: all fields below arrive in a single call_ended webhook.
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
     customerAddress: text("customer_address"),
@@ -199,7 +199,7 @@ export const calls = pgTable(
     service: text("service"),
     summary: text("summary"),
     callDate: text("call_date"),
-    // Webhook 2 — call metadata
+    // Call metadata
     event: text("event"),
     retellEvent: text("retell_event"),
     callStatus: text("call_status"),
@@ -218,9 +218,6 @@ export const calls = pgTable(
     invoiceId: text("invoice_id").references((): AnyPgColumn => invoices.id, {
       onDelete: "set null",
     }),
-    // Flags
-    webhook1Received: boolean("webhook1_received").default(false).notNull(),
-    webhook2Received: boolean("webhook2_received").default(false).notNull(),
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

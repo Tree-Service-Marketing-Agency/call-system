@@ -141,8 +141,6 @@ async function main() {
           retellCost: JSON.stringify({ total_cost: "0.01", currency: "usd" }),
           billingPriceCents: priceCents,
           billingCountedAt: endedAt,
-          webhook1Received: true,
-          webhook2Received: true,
           createdAt: startedAt,
           updatedAt: endedAt,
         })

@@ -23,16 +23,12 @@ _Avoid_: "tenant user", "client user".
 ### Llamadas
 
 **Call**:
-Una conversación entre un cliente final y un Retell voice agent, registrada en la tabla `calls`. Se llena en dos fases: webhook `call_data` (cliente) y webhook `call_ended` (audio + duración).
+Una conversación entre un cliente final y un Retell voice agent, registrada en la tabla `calls`. Se llena en una sola fase: el webhook `call_ended`, que llega cuando termina la llamada con **todos** los datos (cliente + audio + duración + costo + transcript). El webhook `call_data` fue deprecado y eliminado (ver ADR-006).
 _Avoid_: "registro", "interacción".
-
-**Partial call**:
-Una **Call** que sólo recibió `call_data` y aún no recibió `call_ended`. No tiene decisión de billing tomada.
-_Avoid_: "incompleta" (la llamada en sí pudo haber durado cualquier cosa).
 
 ### Estados de billing de una Call
 
-Cuatro valores derivados que se muestran como badges en la columna **Billing** de `/calls`. Se computan desde `billing_ledger.status` y `calls.invoiceId`; no se almacenan como columna explícita. Una **Call** sin **Ledger entry** y con `webhook2_received = true` no muestra badge — la celda queda como `—`.
+Tres valores derivados que se muestran como badges en la columna **Billing** de `/calls`. Se computan desde `billing_ledger.status` y `calls.invoiceId`; no se almacenan como columna explícita. Una **Call** sin **Ledger entry** no muestra badge — la celda queda como `—`. (El cuarto estado, **Partial**, fue eliminado junto con `call_data`; ver ADR-006.)
 
 **Pending**:
 La **Call** tiene una **Ledger entry** en `pending` o `reserved`. Va a entrar al próximo cron de cobro.
@@ -43,9 +39,6 @@ La **Call** ya fue liquidada — su **Ledger entry** está en `paid` y `calls.in
 **Marked non-billable**:
 Un `root` deliberadamente excluyó la **Call** del cobro. Su **Ledger entry** está en `void`. No entra al cron y no suma al balance.
 _Avoid_: "cancelada", "rechazada" (se confunden con `disconnection_reason`).
-
-**Partial**:
-La **Call** sólo recibió `call_data` y aún no tiene `call_ended`. Puede transitar a **Pending** si después llega `call_ended` con un `disconnection_reason` facturable.
 
 ### Pricing & threshold
 
@@ -96,4 +89,5 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 - **"Non-billable"** se usaba ambiguo para "sistema la filtró" y "humano la excluyó". Resuelto: las llamadas que el sistema descarta no muestran badge (celda `—`); **Marked non-billable** = humano (`ledger.status = 'void'`).
 - **"Status"** estaba sobrecargado en `/calls`: la columna existente muestra `callStatus` de Retell, y los billing states también son "estados". Resuelto: la columna existente sigue siendo "Status" (Retell); la nueva columna se llama "Billing".
 - **"Charge"** vs **"Bill"**: el código usa `charge` para la operación de cobro vía Stripe (`charge-cron.ts`); la UI usa "Billing" como sección. Mantener: `charge` = verbo/operación; "Billing" = concepto/sección de UI.
+- **"Partial call" / badge "Partial"** existían porque una **Call** se llenaba en dos webhooks (`call_data` luego `call_ended`) y podía quedar a medias. Resuelto: `call_data` se deprecó; ahora `call_ended` trae todo en un solo payload. El concepto, el badge, y las columnas `webhook1_received`/`webhook2_received` se eliminaron. Ver ADR-006.
 - **"Threshold"** originalmente era un monto en dólares (`billing_threshold_cents`); ahora es un conteo de llamadas (`billing_threshold_calls`, default 25). El `current_balance_cents` ya no participa en el trigger — sólo determina el monto del **Invoice** una vez que el conteo dispara el cobro. Ver ADR-005.
