@@ -7,6 +7,9 @@
 | [001](./adr-001-void-status-for-non-billable-calls.md) | Marcar llamadas no cobrables como nuevo status `void` en `billing_ledger` | Aceptado | 2026-05-04 |
 | [002](./adr-002-url-state-for-list-filters.md) | Estado de filtros en URL para listas del dashboard | Aceptado | 2026-05-04 |
 | [003](./adr-003-retell-cost-column-and-visibility.md) | Columna `retell_cost` (numeric USD) y visibilidad solo agencia | Aceptado | 2026-05-09 |
+| [004](./adr-004-n8n-as-call-ended-ingestion-source.md) | n8n como fuente de ingesta para `call_ended` | Aceptado (parcialmente supersedido por 006) | 2026-05-09 |
+| [005](./adr-005-threshold-in-calls.md) | Billing threshold como conteo de llamadas | Aceptado | 2026-05-14 |
+| [006](./adr-006-single-webhook-call-ended.md) | Consolidación en un solo webhook `call_ended`; eliminación de "Partial" | Aceptado | 2026-05-18 |
 
 ---
 

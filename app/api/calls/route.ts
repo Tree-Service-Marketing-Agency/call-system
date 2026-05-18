@@ -89,8 +89,6 @@ export async function GET(request: NextRequest) {
     audioUrl: calls.audioUrl,
     companyId: calls.companyId,
     companyName: companies.name,
-    webhook1Received: calls.webhook1Received,
-    webhook2Received: calls.webhook2Received,
     ledgerStatus: billingLedger.status,
   };
   const selection = isAgency

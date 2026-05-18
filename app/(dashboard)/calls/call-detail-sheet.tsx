@@ -65,8 +65,6 @@ interface CallDetail {
   companyId: string | null;
   companyName: string | null;
   createdAt: string;
-  webhook1Received: boolean;
-  webhook2Received: boolean;
   // ADR-003: only present for root/admin (gated server-side).
   retellCost?: string | null;
   billing: {
@@ -123,7 +121,7 @@ function formatDateTimeFull(iso: string | null): string {
 }
 
 function statusBadge(status: string | null) {
-  if (!status) return <Badge variant="outline">Partial</Badge>;
+  if (!status) return <span className="text-muted-foreground">—</span>;
   const lower = status.toLowerCase();
   if (COMPLETED_STATUSES.has(lower))
     return <Badge variant="success">{status}</Badge>;

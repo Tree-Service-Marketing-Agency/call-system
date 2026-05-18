@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
 
   const conditions = [];
 
-  // Only include calls where webhook1 was received (has customer data)
-  conditions.push(sql`${calls.webhook1Received} = true`);
+  // ADR-006: customer data now arrives with every call_ended. Group by phone,
+  // skipping rows where the payload didn't carry one.
   conditions.push(sql`${calls.customerPhone} IS NOT NULL`);
 
   if (isAgencyRole(user.role)) {
