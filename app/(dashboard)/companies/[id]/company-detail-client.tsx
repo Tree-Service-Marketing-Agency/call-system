@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageBody } from "@/components/layout/page-body";
 import { CallsClient } from "@/app/(dashboard)/calls/calls-client";
 import type { SessionUser } from "@/lib/auth-helpers";
+import type { NotificationPhone } from "@/lib/notification-phones";
 import { SettingsTab } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
@@ -24,7 +25,7 @@ interface CompanyDetail {
   id: string;
   name: string;
   createdAt: string;
-  notificationPhones: string[];
+  notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
   agents: { id: string; agentId: string }[];
   users: {

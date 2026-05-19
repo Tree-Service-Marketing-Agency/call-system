@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { companies, users } from "@/lib/db/schema";
+import type { NotificationPhone } from "@/lib/notification-phones";
 
 export class EmailAlreadyExistsError extends Error {
   constructor(public readonly email: string) {
@@ -12,7 +13,7 @@ export class EmailAlreadyExistsError extends Error {
 
 export interface OnboardCompanyInput {
   name: string;
-  notificationPhones: string[];
+  notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
   userEmail: string;
   userPassword: string;

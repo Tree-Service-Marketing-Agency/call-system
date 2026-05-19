@@ -11,6 +11,7 @@
 | [005](./adr-005-threshold-in-calls.md) | Billing threshold como conteo de llamadas | Aceptado | 2026-05-14 |
 | [006](./adr-006-single-webhook-call-ended.md) | Consolidación en un solo webhook `call_ended`; eliminación de "Partial" | Aceptado | 2026-05-18 |
 | [007](./adr-007-auto-void-short-calls.md) | Auto-void de llamadas más cortas que un umbral configurable | Aceptado | 2026-05-18 |
+| [008](./adr-008-notification-phones-as-objects.md) | Notification phones como objetos `{ phone, note, disabled }` | Aceptado | 2026-05-19 |
 
 ---
 

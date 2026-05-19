@@ -9,6 +9,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
+import { validateNotificationPhones } from "@/lib/notification-phones";
 
 export async function GET(
   _request: Request,
@@ -99,18 +100,11 @@ export async function PATCH(
   }
 
   if ("notificationPhones" in body) {
-    if (
-      !Array.isArray(body.notificationPhones) ||
-      !body.notificationPhones.every((p) => typeof p === "string")
-    ) {
-      return NextResponse.json(
-        { error: "notificationPhones must be an array of strings" },
-        { status: 400 }
-      );
+    const validated = validateNotificationPhones(body.notificationPhones);
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: 400 });
     }
-    companyUpdates.notificationPhones = (body.notificationPhones as string[])
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    companyUpdates.notificationPhones = validated.value;
   }
 
   if ("leadSnapWebhook" in body) {
