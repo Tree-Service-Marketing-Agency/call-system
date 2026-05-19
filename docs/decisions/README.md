@@ -10,6 +10,7 @@
 | [004](./adr-004-n8n-as-call-ended-ingestion-source.md) | n8n como fuente de ingesta para `call_ended` | Aceptado (parcialmente supersedido por 006) | 2026-05-09 |
 | [005](./adr-005-threshold-in-calls.md) | Billing threshold como conteo de llamadas | Aceptado | 2026-05-14 |
 | [006](./adr-006-single-webhook-call-ended.md) | Consolidación en un solo webhook `call_ended`; eliminación de "Partial" | Aceptado | 2026-05-18 |
+| [007](./adr-007-auto-void-short-calls.md) | Auto-void de llamadas más cortas que un umbral configurable | Aceptado | 2026-05-18 |
 
 ---
 

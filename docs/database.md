@@ -53,11 +53,13 @@ erDiagram
         datetime updated_at
     }
 
-    billing_config {
+    business_config {
         uuid id PK
-        decimal price_per_call
-        datetime effective_from
-        datetime created_at
+        int price_per_call_cents
+        int billing_threshold_calls
+        int min_billable_duration_seconds
+        datetime updated_at
+        text updated_by
     }
 
     companies ||--o{ agents : "tiene"
@@ -157,16 +159,18 @@ Cada llamada registrada. Se llena en una sola fase: el webhook `call_ended` trae
 **Relaciones:**
 - Pertenece a `companies` via `company_id`
 
-### billing_config
+### business_config
 
-Configuracion del precio por llamada. Solo el root puede modificarlo. Se guarda historico para que el precio aplique solo a llamadas futuras.
+Fila unica de configuracion global del modelo de negocio. Solo `root` puede modificarla (`/business-model`). Los cambios aplican solo a **Calls** futuras; no re-evaluan llamadas ya registradas.
 
 | Campo | Tipo | Descripcion |
 |---|---|---|
 | id | UUID | Identificador unico |
-| price_per_call | DECIMAL | Precio fijo por llamada |
-| effective_from | TIMESTAMP | Desde cuando aplica este precio |
-| created_at | TIMESTAMP | Fecha de creacion |
+| price_per_call_cents | INTEGER | Precio fijo por llamada en cents (default 100) |
+| billing_threshold_calls | INTEGER | Conteo de **Calls** pending que dispara el cron (default 25, ver ADR-005) |
+| min_billable_duration_seconds | INTEGER | Umbral en segundos bajo el cual una **Call** se auto-voida al ingerir. `NOT NULL DEFAULT 20`; `0` desactiva la regla. Ver ADR-007 |
+| updated_at | TIMESTAMP | Ultima actualizacion |
+| updated_by | TEXT | Usuario (`root`) que la actualizo |
 
 ---
 

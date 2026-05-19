@@ -306,6 +306,12 @@ export const businessConfig = pgTable("business_config", {
   billingThresholdCalls: integer("billing_threshold_calls")
     .notNull()
     .default(25),
+  // ADR-007: Calls shorter than this (in seconds) are auto-voided at
+  // ingestion. 0 disables the rule. Compared strictly against
+  // calls.duration_ms (duration_ms < seconds * 1000).
+  minBillableDurationSeconds: integer("min_billable_duration_seconds")
+    .notNull()
+    .default(20),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   updatedBy: text("updated_by").references(() => users.id),
 });

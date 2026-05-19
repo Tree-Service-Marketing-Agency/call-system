@@ -22,6 +22,24 @@ sequenceDiagram
     API->>DB: Upsert call por (call_id, agent_id) con todos los datos
 ```
 
+### Decision de billing al ingerir (ADR-007)
+
+Tras el upsert, un modulo puro (`resolveBillingOutcome`) decide la **Ledger
+entry** segun esta precedencia fija:
+
+1. `disconnection_reason` no cobrable → **sin ledger** (celda `—`).
+2. Sin compania resuelta → **sin ledger** (celda `—`).
+3. `duration_ms < min_billable_duration_seconds · 1000` (estricto) → **Ledger
+   entry insertada directamente en `void`** (badge **Marked non-billable**,
+   `voided_by = NULL`). No suma al **Pending balance** ni setea
+   `billing_counted_at`. `duration_ms` nulo ⇒ se trata como cobrable
+   (fail-open); `min_billable_duration_seconds = 0` desactiva la regla.
+4. En otro caso → **Ledger entry `pending`** (+balance, `billing_counted_at`).
+
+El webhook responde `204` en todos los casos. `root` puede hacer **Restore**
+sobre una **Call** corta auto-voided (override de falso positivo): suma
+`amount_cents` al balance, correcto porque el auto-void nunca sumo.
+
 ---
 
 ## Flujo 2: Autenticacion y acceso por rol

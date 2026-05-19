@@ -32,6 +32,47 @@ export async function insertCallChargeLedgerEntry(
   return { inserted: result.length > 0 };
 }
 
+/**
+ * ADR-007: insert the Ledger entry directly as `void` for a call that was
+ * auto-excluded for being shorter than the Minimum billable duration.
+ *
+ * Unlike a manual Void, this never touches `companies.current_balance_cents`
+ * nor `calls.billing_counted_at` (the auto-void never summed to the balance,
+ * so a later Restore correctly adds `amount_cents` back). `voidedBy` stays
+ * NULL so the data distinguishes a system exclusion from a human Void.
+ *
+ * Keeps the same `onConflictDoNothing` on UNIQUE(call_id, entry_type) so an
+ * n8n reprocess/retry stays idempotent.
+ */
+export async function insertVoidedCallChargeLedgerEntry(
+  client: DrizzleClient | Tx,
+  params: {
+    companyId: string;
+    callId: string;
+    callRowId: string;
+    amountCents: number;
+  }
+): Promise<{ inserted: boolean }> {
+  const result = await client
+    .insert(billingLedger)
+    .values({
+      companyId: params.companyId,
+      callId: params.callId,
+      callRowId: params.callRowId,
+      entryType: "call_charge",
+      amountCents: params.amountCents,
+      status: "void",
+      voidedAt: new Date(),
+      voidedBy: null,
+    })
+    .onConflictDoNothing({
+      target: [billingLedger.callId, billingLedger.entryType],
+    })
+    .returning({ id: billingLedger.id });
+
+  return { inserted: result.length > 0 };
+}
+
 export async function reservePendingLedgerForInvoice(
   tx: Tx,
   params: { companyId: string; invoiceId: string }

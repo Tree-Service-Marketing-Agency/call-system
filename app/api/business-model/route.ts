@@ -14,6 +14,7 @@ export async function GET() {
   return NextResponse.json({
     pricePerCallCents: config?.pricePerCallCents ?? 100,
     billingThresholdCalls: config?.billingThresholdCalls ?? 25,
+    minBillableDurationSeconds: config?.minBillableDurationSeconds ?? 20,
     updatedAt: config?.updatedAt ?? null,
   });
 }
@@ -25,11 +26,13 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { pricePerCallCents, billingThresholdCalls } = body;
+  const { pricePerCallCents, billingThresholdCalls, minBillableDurationSeconds } =
+    body;
 
   const updates: {
     pricePerCallCents?: number;
     billingThresholdCalls?: number;
+    minBillableDurationSeconds?: number;
   } = {};
 
   if (pricePerCallCents !== undefined) {
@@ -54,6 +57,18 @@ export async function PUT(request: Request) {
     updates.billingThresholdCalls = n;
   }
 
+  // ADR-007: Minimum billable duration in seconds. 0 disables the rule.
+  if (minBillableDurationSeconds !== undefined) {
+    const n = Number(minBillableDurationSeconds);
+    if (!Number.isInteger(n) || n < 0) {
+      return NextResponse.json(
+        { error: "minBillableDurationSeconds must be an integer >= 0" },
+        { status: 400 }
+      );
+    }
+    updates.minBillableDurationSeconds = n;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(
       { error: "No valid fields to update" },
@@ -76,6 +91,7 @@ export async function PUT(request: Request) {
     await db.insert(businessConfig).values({
       pricePerCallCents: updates.pricePerCallCents ?? 100,
       billingThresholdCalls: updates.billingThresholdCalls ?? 25,
+      minBillableDurationSeconds: updates.minBillableDurationSeconds ?? 20,
       updatedBy: user.id,
     });
   }
