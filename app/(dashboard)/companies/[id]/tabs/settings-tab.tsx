@@ -29,6 +29,7 @@ import { PlusIcon, XIcon } from "lucide-react";
 import type { UserRole } from "@/lib/auth-helpers";
 import {
   NOTE_MAX_LENGTH,
+  coerceNotificationPhones,
   type NotificationPhone,
 } from "@/lib/notification-phones";
 
@@ -85,11 +86,10 @@ export function SettingsTab({
   const [agentsSaving, setAgentsSaving] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
 
-  const [phonesDraft, setPhonesDraft] = useState<NotificationPhone[]>(
-    company.notificationPhones.length > 0
-      ? company.notificationPhones
-      : [EMPTY_PHONE],
-  );
+  const [phonesDraft, setPhonesDraft] = useState<NotificationPhone[]>(() => {
+    const coerced = coerceNotificationPhones(company.notificationPhones);
+    return coerced.length > 0 ? coerced : [EMPTY_PHONE];
+  });
   const [phonesSaving, setPhonesSaving] = useState(false);
   const [phonesError, setPhonesError] = useState<string | null>(null);
 
@@ -106,7 +106,10 @@ export function SettingsTab({
     () => company.agents.map((a) => a.agentId),
     [company.agents],
   );
-  const currentPhones = company.notificationPhones;
+  const currentPhones = useMemo(
+    () => coerceNotificationPhones(company.notificationPhones),
+    [company.notificationPhones],
+  );
   const currentWebhook = company.leadSnapWebhook ?? "";
 
   const cleanedAgents = agentsDraft.map((a) => a.trim()).filter(Boolean);

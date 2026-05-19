@@ -17,6 +17,30 @@ export interface NotificationPhone {
 
 export const NOTE_MAX_LENGTH = 150;
 
+/**
+ * Lenient, non-throwing coercion of any stored/legacy value into
+ * well-formed {@link NotificationPhone}s. Use for *reading* data into the UI
+ * (tolerates pre-migration `string` rows or objects with missing fields).
+ * For *writing*, use {@link validateNotificationPhones} instead.
+ */
+export function coerceNotificationPhones(raw: unknown): NotificationPhone[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    if (typeof entry === "string") {
+      return { phone: entry, note: "", disabled: false };
+    }
+    if (entry && typeof entry === "object") {
+      const e = entry as Record<string, unknown>;
+      return {
+        phone: typeof e.phone === "string" ? e.phone : "",
+        note: typeof e.note === "string" ? e.note : "",
+        disabled: e.disabled === true,
+      };
+    }
+    return { phone: "", note: "", disabled: false };
+  });
+}
+
 export type ValidateNotificationPhonesResult =
   | { ok: true; value: NotificationPhone[] }
   | { ok: false; error: string };
