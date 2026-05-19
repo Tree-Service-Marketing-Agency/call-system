@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth-helpers";
-import { normalizeUsPhone } from "@/lib/phone";
+import { validateNotificationPhones } from "@/lib/notification-phones";
 import {
   EmailAlreadyExistsError,
   onboardCompany,
@@ -44,30 +44,15 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (
-    !Array.isArray(notificationPhones) ||
-    notificationPhones.length === 0 ||
-    !notificationPhones.every((p) => typeof p === "string")
-  ) {
+  const validatedPhones = validateNotificationPhones(notificationPhones);
+  if (!validatedPhones.ok) {
     return NextResponse.json(
-      { error: "notificationPhones must be a non-empty array of strings" },
+      { error: validatedPhones.error },
       { status: 400 }
     );
   }
-
-  const normalizedPhones: string[] = [];
-  for (const raw of notificationPhones as string[]) {
-    if (raw.trim().length === 0) continue;
-    const normalized = normalizeUsPhone(raw);
-    if (!normalized) {
-      return NextResponse.json(
-        { error: `Invalid US phone number: ${raw}` },
-        { status: 400 }
-      );
-    }
-    normalizedPhones.push(normalized);
-  }
-  if (normalizedPhones.length === 0) {
+  // Onboarding (unlike Settings) requires at least one usable phone.
+  if (validatedPhones.value.length === 0) {
     return NextResponse.json(
       { error: "At least one valid notification phone is required" },
       { status: 400 }
@@ -82,7 +67,7 @@ export async function POST(request: Request) {
   try {
     const { company, user } = await onboardCompany({
       name: name.trim(),
-      notificationPhones: normalizedPhones,
+      notificationPhones: validatedPhones.value,
       leadSnapWebhook: cleanedLeadSnap,
       userEmail: userEmail.trim(),
       userPassword,

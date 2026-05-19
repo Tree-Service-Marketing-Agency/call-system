@@ -46,7 +46,13 @@ export async function GET(
   return NextResponse.json({
     id: company.id,
     name: company.name,
-    notificationPhones: company.notificationPhones,
+    // Returns every phone — including disabled ones. n8n owns the
+    // "who gets notified" decision and filters on `disabled` itself (ADR-008).
+    notificationPhones: company.notificationPhones.map((p) => ({
+      phone: p.phone,
+      note: p.note,
+      disabled: p.disabled,
+    })),
     leadSnapWebhook: company.leadSnapWebhook,
     billing: {
       status: company.billingStatus,

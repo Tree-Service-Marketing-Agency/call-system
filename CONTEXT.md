@@ -72,6 +72,20 @@ _Avoid_: "cancelar" (se confunde con cancelar un Stripe invoice).
 **Restore** (verbo):
 Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar de vuelta al balance. Limpia `voidedAt` y `voidedBy`. Sin histórico de re-marcadas.
 
+### Notificaciones de lead
+
+**Notification phone**:
+Una entrada de `companies.notification_phones` (columna `jsonb`, array) que representa un número que recibe alertas de un nuevo lead. Forma: `{ phone, note, disabled }`. `phone` normalizado a E.164 US (`+1XXXXXXXXXX`); una entrada con `phone` inválido se descarta entera al guardar. No puede haber dos entradas con el mismo `phone` normalizado (el API responde 400). La lógica de a quién se notifica vive en n8n, no en este sistema.
+_Avoid_: "notification number", "lead phone".
+
+**Note** (de un **Notification phone**):
+Texto libre, máximo 150 caracteres, para identificar de quién es el número. Opcional (puede ser `""`). No lo consume ninguna lógica de notificación; es solo para que el operador de la agencia reconozca el número.
+_Avoid_: "comentario", "descripción", "label".
+
+**Disabled** (de un **Notification phone**):
+Booleano por número; `true` = n8n no debe notificar a ese número. Default `false`. Este sistema solo almacena y expone el flag; el filtrado ocurre en n8n. Un número `disabled` igual debe tener un `phone` válido.
+_Avoid_: "isDisabled" (uso informal del campo), "enabled" (polaridad invertida), "inactive".
+
 ## Relationships
 
 - Una **Call** tiene cero o una **Ledger entry** (`UNIQUE(call_id, entry_type)` en `billing_ledger`).
@@ -82,6 +96,7 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
   - `pending ↔ void` (Void / Restore manuales por root)
 - Una entry en `void` no puede llegar a `reserved` ni a `paid` sin pasar primero por `pending` vía **Restore**.
 - El cron dispara cobro cuando **Pending calls count** ≥ **Billing threshold**. El **Pending balance** define el monto del **Invoice**, no el trigger. **Void** y **Restore** modifican ambos (count y balance) al cambiar el status del ledger.
+- Una **Company** tiene cero o más **Notification phones** en `companies.notification_phones`. La API externa `by-agent` los expone **todos**, incluidos los **Disabled**; n8n decide a quién notifica filtrando por `disabled`.
 
 ## Example dialogue
 
@@ -99,3 +114,5 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 - **"Charge"** vs **"Bill"**: el código usa `charge` para la operación de cobro vía Stripe (`charge-cron.ts`); la UI usa "Billing" como sección. Mantener: `charge` = verbo/operación; "Billing" = concepto/sección de UI.
 - **"Partial call" / badge "Partial"** existían porque una **Call** se llenaba en dos webhooks (`call_data` luego `call_ended`) y podía quedar a medias. Resuelto: `call_data` se deprecó; ahora `call_ended` trae todo en un solo payload. El concepto, el badge, y las columnas `webhook1_received`/`webhook2_received` se eliminaron. Ver ADR-006.
 - **"Threshold"** originalmente era un monto en dólares (`billing_threshold_cents`); ahora es un conteo de llamadas (`billing_threshold_calls`, default 25). El `current_balance_cents` ya no participa en el trigger — sólo determina el monto del **Invoice** una vez que el conteo dispara el cobro. Ver ADR-005.
+- **"comentario" / "descripción" / "label"** se usaban indistintamente para el texto libre de un **Notification phone** — resuelto: el término es **Note**, máximo 150 caracteres, opcional.
+- **"isDisabled" / "enabled"** para el estado de un **Notification phone** — resuelto: el campo es **Disabled** (booleano, default `false`, `true` = no notificar). Se descartó polaridad positiva para no invertir el enunciado en n8n.

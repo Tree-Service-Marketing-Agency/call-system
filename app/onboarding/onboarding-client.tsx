@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -23,8 +24,16 @@ import {
 } from "@/components/ui/card";
 import { generatePassword } from "@/lib/password";
 import { normalizeUsPhone } from "@/lib/phone";
+import { NOTE_MAX_LENGTH } from "@/lib/notification-phones";
 
 type Mode = "form" | "loading" | "success";
+
+interface PhoneDraft {
+  phone: string;
+  note: string;
+}
+
+const EMPTY_PHONE: PhoneDraft = { phone: "", note: "" };
 
 interface SuccessState {
   companyName: string;
@@ -38,7 +47,7 @@ export function OnboardingClient() {
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   const [name, setName] = useState("");
-  const [phones, setPhones] = useState<string[]>([""]);
+  const [phones, setPhones] = useState<PhoneDraft[]>([EMPTY_PHONE]);
   const [leadSnap, setLeadSnap] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +62,7 @@ export function OnboardingClient() {
 
   function resetForm() {
     setName("");
-    setPhones([""]);
+    setPhones([EMPTY_PHONE]);
     setLeadSnap("");
     setEmail("");
     setPassword(generatePassword());
@@ -77,15 +86,23 @@ export function OnboardingClient() {
       return;
     }
 
-    const normalized: string[] = [];
-    for (const raw of phones) {
-      if (!raw.trim()) continue;
-      const n = normalizeUsPhone(raw);
+    const normalized: { phone: string; note: string; disabled: boolean }[] =
+      [];
+    for (const entry of phones) {
+      if (!entry.phone.trim()) continue;
+      const n = normalizeUsPhone(entry.phone);
       if (!n) {
-        setError(`Invalid US phone number: ${raw}`);
+        setError(`Invalid US phone number: ${entry.phone}`);
         return;
       }
-      normalized.push(n);
+      const note = entry.note.trim();
+      if (note.length > NOTE_MAX_LENGTH) {
+        setError(`Note must be ${NOTE_MAX_LENGTH} characters or fewer.`);
+        return;
+      }
+      // Phones onboarded are always active; `disabled` is managed later
+      // from the company Settings tab (ADR-008).
+      normalized.push({ phone: n, note, disabled: false });
     }
     if (normalized.length === 0) {
       setError("Add at least one US notification phone.");
@@ -214,38 +231,65 @@ export function OnboardingClient() {
 
           <div className="flex flex-col gap-2">
             <Label>Notification phones</Label>
-            {phones.map((phone, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => {
-                    const updated = [...phones];
-                    updated[index] = e.target.value;
-                    setPhones(updated);
-                  }}
-                  placeholder="(555) 123-4567"
-                />
-                {phones.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      setPhones(phones.filter((_, i) => i !== index))
-                    }
-                    aria-label="Remove phone"
-                  >
-                    <XIcon />
-                  </Button>
-                )}
+            {phones.map((entry, index) => (
+              <div
+                key={index}
+                className="flex flex-col gap-2 rounded-lg border border-border p-3"
+              >
+                <div className="flex gap-2">
+                  <Input
+                    type="tel"
+                    value={entry.phone}
+                    onChange={(e) => {
+                      const updated = [...phones];
+                      updated[index] = {
+                        ...updated[index],
+                        phone: e.target.value,
+                      };
+                      setPhones(updated);
+                    }}
+                    placeholder="(555) 123-4567"
+                  />
+                  {phones.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        setPhones(phones.filter((_, i) => i !== index))
+                      }
+                      aria-label="Remove phone"
+                    >
+                      <XIcon />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Textarea
+                    value={entry.note}
+                    maxLength={NOTE_MAX_LENGTH}
+                    rows={2}
+                    placeholder="Note — whose number is this? (optional)"
+                    onChange={(e) => {
+                      const updated = [...phones];
+                      updated[index] = {
+                        ...updated[index],
+                        note: e.target.value,
+                      };
+                      setPhones(updated);
+                    }}
+                  />
+                  <span className="self-end text-xs text-muted-foreground">
+                    {entry.note.length}/{NOTE_MAX_LENGTH}
+                  </span>
+                </div>
               </div>
             ))}
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setPhones([...phones, ""])}
+              onClick={() => setPhones([...phones, EMPTY_PHONE])}
             >
               <PlusIcon data-icon="inline-start" />
               Add phone

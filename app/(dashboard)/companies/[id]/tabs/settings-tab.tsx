@@ -22,13 +22,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { PlusIcon, XIcon } from "lucide-react";
 import type { UserRole } from "@/lib/auth-helpers";
+import {
+  NOTE_MAX_LENGTH,
+  type NotificationPhone,
+} from "@/lib/notification-phones";
 
 interface CompanyForSettings {
   id: string;
   name: string;
-  notificationPhones: string[];
+  notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
   agents: { id: string; agentId: string }[];
 }
@@ -40,6 +47,26 @@ function arraysEqual(a: string[], b: string[]) {
   }
   return true;
 }
+
+function phonesEqual(a: NotificationPhone[], b: NotificationPhone[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i].phone !== b[i].phone ||
+      a[i].note !== b[i].note ||
+      a[i].disabled !== b[i].disabled
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const EMPTY_PHONE: NotificationPhone = {
+  phone: "",
+  note: "",
+  disabled: false,
+};
 
 export function SettingsTab({
   company,
@@ -58,8 +85,10 @@ export function SettingsTab({
   const [agentsSaving, setAgentsSaving] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
 
-  const [phonesDraft, setPhonesDraft] = useState<string[]>(
-    company.notificationPhones.length > 0 ? company.notificationPhones : [""],
+  const [phonesDraft, setPhonesDraft] = useState<NotificationPhone[]>(
+    company.notificationPhones.length > 0
+      ? company.notificationPhones
+      : [EMPTY_PHONE],
   );
   const [phonesSaving, setPhonesSaving] = useState(false);
   const [phonesError, setPhonesError] = useState<string | null>(null);
@@ -81,11 +110,17 @@ export function SettingsTab({
   const currentWebhook = company.leadSnapWebhook ?? "";
 
   const cleanedAgents = agentsDraft.map((a) => a.trim()).filter(Boolean);
-  const cleanedPhones = phonesDraft.map((p) => p.trim()).filter(Boolean);
+  const cleanedPhones: NotificationPhone[] = phonesDraft
+    .map((p) => ({
+      phone: p.phone.trim(),
+      note: p.note.trim(),
+      disabled: p.disabled,
+    }))
+    .filter((p) => p.phone.length > 0);
   const cleanedWebhook = webhookDraft.trim();
 
   const agentsDirty = !arraysEqual(cleanedAgents, currentAgentIds);
-  const phonesDirty = !arraysEqual(cleanedPhones, currentPhones);
+  const phonesDirty = !phonesEqual(cleanedPhones, currentPhones);
   const webhookDirty = cleanedWebhook !== currentWebhook;
 
   async function patchCompany(body: Record<string, unknown>): Promise<{
@@ -248,33 +283,71 @@ export function SettingsTab({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-2">
-            {phonesDraft.map((phone, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={phone}
-                  placeholder="+1 555 000 0000"
-                  onChange={(e) => {
-                    const next = [...phonesDraft];
-                    next[index] = e.target.value;
-                    setPhonesDraft(next);
-                  }}
-                />
-                {phonesDraft.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Remove phone"
-                    onClick={() =>
-                      setPhonesDraft(
-                        phonesDraft.filter((_, i) => i !== index),
-                      )
-                    }
-                  >
-                    <XIcon />
-                  </Button>
-                )}
+          <div className="flex flex-col gap-3">
+            {phonesDraft.map((entry, index) => (
+              <div
+                key={index}
+                className="flex flex-col gap-2 rounded-lg border border-border p-3"
+              >
+                <div className="flex gap-2">
+                  <Input
+                    value={entry.phone}
+                    placeholder="+1 555 000 0000"
+                    onChange={(e) => {
+                      const next = [...phonesDraft];
+                      next[index] = { ...next[index], phone: e.target.value };
+                      setPhonesDraft(next);
+                    }}
+                  />
+                  {phonesDraft.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Remove phone"
+                      onClick={() =>
+                        setPhonesDraft(
+                          phonesDraft.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      <XIcon />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Textarea
+                    value={entry.note}
+                    maxLength={NOTE_MAX_LENGTH}
+                    rows={2}
+                    placeholder="Note — whose number is this? (optional)"
+                    onChange={(e) => {
+                      const next = [...phonesDraft];
+                      next[index] = {
+                        ...next[index],
+                        note: e.target.value,
+                      };
+                      setPhonesDraft(next);
+                    }}
+                  />
+                  <span className="self-end text-xs text-muted-foreground">
+                    {entry.note.length}/{NOTE_MAX_LENGTH}
+                  </span>
+                </div>
+                <Label className="flex items-center gap-2 text-sm font-normal">
+                  <Switch
+                    checked={entry.disabled}
+                    onCheckedChange={(checked) => {
+                      const next = [...phonesDraft];
+                      next[index] = {
+                        ...next[index],
+                        disabled: checked === true,
+                      };
+                      setPhonesDraft(next);
+                    }}
+                  />
+                  Disabled — exclude from notifications
+                </Label>
               </div>
             ))}
             <Button
@@ -282,7 +355,7 @@ export function SettingsTab({
               variant="outline"
               size="sm"
               className="w-fit"
-              onClick={() => setPhonesDraft([...phonesDraft, ""])}
+              onClick={() => setPhonesDraft([...phonesDraft, EMPTY_PHONE])}
             >
               <PlusIcon data-icon="inline-start" />
               Add phone
@@ -300,7 +373,9 @@ export function SettingsTab({
                   variant="outline"
                   onClick={() => {
                     setPhonesDraft(
-                      currentPhones.length > 0 ? currentPhones : [""],
+                      currentPhones.length > 0
+                        ? currentPhones
+                        : [EMPTY_PHONE],
                     );
                     setPhonesError(null);
                   }}

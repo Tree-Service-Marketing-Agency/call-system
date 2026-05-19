@@ -13,6 +13,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { NotificationPhone } from "@/lib/notification-phones";
 
 // ─── Enums ───────────────────────────────────────────────────
 
@@ -64,10 +65,10 @@ export const companies = pgTable(
     currentBalanceCents: integer("current_balance_cents").notNull().default(0),
     billingUpdatedAt: timestamp("billing_updated_at"),
     lastNoPaymentWarningAt: timestamp("last_no_payment_warning_at"),
-    notificationPhones: text("notification_phones")
-      .array()
+    notificationPhones: jsonb("notification_phones")
+      .$type<NotificationPhone[]>()
       .notNull()
-      .default(sql`ARRAY[]::text[]`),
+      .default(sql`'[]'::jsonb`),
     leadSnapWebhook: text("lead_snap_webhook"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
