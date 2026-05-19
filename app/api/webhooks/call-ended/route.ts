@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { calls, companyAgents, companies } from "@/lib/db/schema";
-import { insertCallChargeLedgerEntry } from "@/lib/billing/ledger";
+import {
+  insertCallChargeLedgerEntry,
+  insertVoidedCallChargeLedgerEntry,
+} from "@/lib/billing/ledger";
 import { isBillableDisconnection } from "@/lib/billing/rules";
+import { resolveBillingOutcome } from "@/lib/billing/resolve-billing-outcome";
 import { verifyN8nSecret } from "@/lib/webhook-auth";
 import { mapCallEndedPayload } from "@/lib/calls/map-call-ended-payload";
 
@@ -130,28 +134,84 @@ export async function POST(request: Request) {
     callRowId = inserted[0].id;
   }
 
-  if (!isBillableDisconnection(mapped.disconnectionReason)) {
-    console.log(
-      "[call-ended] non-billable disconnection",
-      JSON.stringify({
-        call_id,
-        disconnection_reason: mapped.disconnectionReason,
-      })
-    );
-    return new NextResponse(null, { status: 204 });
-  }
-
-  if (!companyId) {
-    console.warn(
-      "[call-ended] billable call but no company resolved",
-      JSON.stringify({ call_id, agent_id })
-    );
-    return new NextResponse(null, { status: 204 });
-  }
-
   const config = await db.query.businessConfig.findFirst();
   const priceCents = config?.pricePerCallCents ?? 100;
+  const minBillableSeconds = config?.minBillableDurationSeconds ?? 20;
 
+  // ADR-007: a single deep resolver owns the full billing precedence.
+  const outcome = resolveBillingOutcome({
+    disconnectionReason: mapped.disconnectionReason,
+    companyId,
+    durationMs: mapped.durationMs,
+    minBillableSeconds,
+  });
+
+  // 'no_ledger' → no Ledger entry, Billing cell stays `—` (existing behaviour).
+  // Two distinct causes are logged separately for auditing, as before.
+  if (outcome === "no_ledger") {
+    if (!isBillableDisconnection(mapped.disconnectionReason)) {
+      console.log(
+        "[call-ended] non-billable disconnection",
+        JSON.stringify({
+          call_id,
+          disconnection_reason: mapped.disconnectionReason,
+        })
+      );
+    } else {
+      console.warn(
+        "[call-ended] billable call but no company resolved",
+        JSON.stringify({ call_id, agent_id })
+      );
+    }
+    return new NextResponse(null, { status: 204 });
+  }
+
+  // companyId is non-null past this point (resolver returned 'no_ledger' otherwise).
+  const resolvedCompanyId = companyId as string;
+
+  // 'void' → ADR-007 auto short-call exclusion: insert the Ledger entry
+  // directly as `void`. Snapshot billing_price_cents (so a later Restore
+  // knows what it would have charged) but never touch balance nor
+  // billing_counted_at.
+  if (outcome === "void") {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(calls)
+        .set({ billingPriceCents: priceCents, updatedAt: new Date() })
+        .where(eq(calls.id, callRowId));
+
+      const { inserted } = await insertVoidedCallChargeLedgerEntry(tx, {
+        companyId: resolvedCompanyId,
+        callId: call_id,
+        callRowId,
+        amountCents: priceCents,
+      });
+
+      if (!inserted) {
+        console.log(
+          "[call-ended] ledger_duplicate_ignored",
+          JSON.stringify({ call_id })
+        );
+        return;
+      }
+
+      console.log(
+        "[call-ended] auto_voided_short_call",
+        JSON.stringify({
+          call_id,
+          company_id: resolvedCompanyId,
+          duration_ms: mapped.durationMs,
+          min_billable_seconds: minBillableSeconds,
+          amount_cents: priceCents,
+        })
+      );
+    });
+
+    return new NextResponse(null, { status: 204 });
+  }
+
+  // 'pending' → normal billable flow (unchanged): insert pending, +balance,
+  // billing_counted_at.
   await db.transaction(async (tx) => {
     await tx
       .update(calls)
@@ -162,7 +222,7 @@ export async function POST(request: Request) {
       .where(eq(calls.id, callRowId));
 
     const { inserted } = await insertCallChargeLedgerEntry(tx, {
-      companyId,
+      companyId: resolvedCompanyId,
       callId: call_id,
       callRowId,
       amountCents: priceCents,
@@ -183,7 +243,7 @@ export async function POST(request: Request) {
         billingUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(companies.id, companyId));
+      .where(eq(companies.id, resolvedCompanyId));
 
     await tx
       .update(calls)
@@ -192,7 +252,11 @@ export async function POST(request: Request) {
 
     console.log(
       "[call-ended] ledger_inserted",
-      JSON.stringify({ call_id, company_id: companyId, amount_cents: priceCents })
+      JSON.stringify({
+        call_id,
+        company_id: resolvedCompanyId,
+        amount_cents: priceCents,
+      })
     );
   });
 

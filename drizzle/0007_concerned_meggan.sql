@@ -1,0 +1,1 @@
+ALTER TABLE "business_config" ADD COLUMN "min_billable_duration_seconds" integer DEFAULT 20 NOT NULL;

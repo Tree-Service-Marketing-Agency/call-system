@@ -24,7 +24,7 @@ _Avoid_: "tenant user", "client user".
 
 **Call**:
 Una conversación entre un cliente final y un Retell voice agent, registrada en la tabla `calls`. Se llena en una sola fase: el webhook `call_ended`, que llega cuando termina la llamada con **todos** los datos (cliente + audio + duración + costo + transcript). El webhook `call_data` fue deprecado y eliminado (ver ADR-006).
-_Avoid_: "registro", "interacción".
+_Avoid_: "registro", "interacción", "webhook de Encode" (alias informal del webhook `call_ended`; usar el nombre real).
 
 ### Estados de billing de una Call
 
@@ -37,8 +37,14 @@ La **Call** tiene una **Ledger entry** en `pending` o `reserved`. Va a entrar al
 La **Call** ya fue liquidada — su **Ledger entry** está en `paid` y `calls.invoiceId` apunta a un **Invoice** pagado.
 
 **Marked non-billable**:
-Un `root` deliberadamente excluyó la **Call** del cobro. Su **Ledger entry** está en `void`. No entra al cron y no suma al balance.
+La **Call** está excluida del cobro: su **Ledger entry** está en `void`, no entra al cron y no suma al balance. Dos orígenes, mismo badge (ver ADR-007):
+- **Humano**: un `root` hizo **Void** manual (`voidedBy = userId`).
+- **Sistema**: la **Call** duró menos que la **Minimum billable duration** y se auto-voidó al ingerir (`voidedBy = null`). `root` puede revertirla con **Restore** como override.
 _Avoid_: "cancelada", "rechazada" (se confunden con `disconnection_reason`).
+
+**Minimum billable duration**:
+Umbral global en **segundos** bajo el cual una **Call** por lo demás cobrable se auto-voida al llegar por `call_ended`. Se almacena en `business_config.min_billable_duration_seconds` (default `20`, `0` = regla desactivada). Compara contra `calls.duration_ms` con criterio **estricto** (`duration_ms < umbral·1000`); `duration_ms` nulo ⇒ se trata como billable (fail-open). Cambiarlo no afecta **Calls** ya registradas. Configurable solo por `root` en `/business-model`.
+_Avoid_: "límite de duración", "duración mínima de cobro" (ambiguo con tiempo de conversación).
 
 ### Pricing & threshold
 
@@ -70,6 +76,7 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 
 - Una **Call** tiene cero o una **Ledger entry** (`UNIQUE(call_id, entry_type)` en `billing_ledger`).
 - Sólo las **Calls** con `disconnection_reason ∈ {'user_hangup', 'agent_hangup'}` (ver `lib/billing/rules.ts`) **y** compañía resuelta producen **Ledger entries**.
+- Precedencia al ingerir (ADR-007): `disconnection` no-billable → sin ledger, celda `—`. Sin compañía → sin ledger, celda `—`. Duración `< ` **Minimum billable duration** → **Ledger entry** insertada **directamente** en `void` (balance intacto, `billing_counted_at = null`), badge **Marked non-billable**. En otro caso → `pending`.
 - Transiciones legales del status del ledger:
   - `pending → reserved → paid` (camino del cron)
   - `pending ↔ void` (Void / Restore manuales por root)
@@ -86,7 +93,8 @@ Operación inversa de **Void**: devolver una entry de `void` a `pending` y sumar
 
 ## Flagged ambiguities
 
-- **"Non-billable"** se usaba ambiguo para "sistema la filtró" y "humano la excluyó". Resuelto: las llamadas que el sistema descarta no muestran badge (celda `—`); **Marked non-billable** = humano (`ledger.status = 'void'`).
+- **"Non-billable"** se usaba ambiguo para "sistema la filtró" y "humano la excluyó". Resolución original (ADR-001 era): celda `—` = sistema; badge **Marked non-billable** = humano. **Re-resuelto por ADR-007**: el badge **Marked non-billable** (`ledger.status = 'void'`) ahora cubre **ambos** orígenes — humano (`voidedBy = userId`) y sistema por **Minimum billable duration** (`voidedBy = null`). La celda `—` queda solo para llamadas sin **Ledger entry** (disconnection no-billable o sin compañía).
+- **"Webhook de Encode"** es un alias informal del webhook de ingesta real `call_ended` (Retell → n8n → Lola). No existe ningún "Encode" en código. Resuelto: usar siempre `call_ended`.
 - **"Status"** estaba sobrecargado en `/calls`: la columna existente muestra `callStatus` de Retell, y los billing states también son "estados". Resuelto: la columna existente sigue siendo "Status" (Retell); la nueva columna se llama "Billing".
 - **"Charge"** vs **"Bill"**: el código usa `charge` para la operación de cobro vía Stripe (`charge-cron.ts`); la UI usa "Billing" como sección. Mantener: `charge` = verbo/operación; "Billing" = concepto/sección de UI.
 - **"Partial call" / badge "Partial"** existían porque una **Call** se llenaba en dos webhooks (`call_data` luego `call_ended`) y podía quedar a medias. Resuelto: `call_data` se deprecó; ahora `call_ended` trae todo en un solo payload. El concepto, el badge, y las columnas `webhook1_received`/`webhook2_received` se eliminaron. Ver ADR-006.
