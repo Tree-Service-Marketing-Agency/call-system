@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { billingLedger, calls, companies } from "@/lib/db/schema";
+import { billingLedger, calls, companies, invoices } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
+import {
+  INVOICE_CALLS_PAGE_SIZE,
+  getCallsForInvoice,
+} from "@/lib/billing/invoice-calls";
 
 const BILLING_FILTER_TO_STATUSES = {
   pending: ["pending", "reserved"],
@@ -37,10 +41,51 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get("page") ?? "1");
   const companyId = searchParams.get("companyId")?.trim() || null;
+  const invoiceId = searchParams.get("invoiceId")?.trim() || null;
   const billingValues = parseList(searchParams.get("billing")).filter(
     isBillingFilter,
   );
   const offset = (page - 1) * PAGE_SIZE;
+
+  if (invoiceId) {
+    // Staff (read-only) cannot reach this view, matching /billing gating.
+    if (user.role === "staff") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // staff_admin: gate by their own company.
+    if (!isAgencyRole(user.role)) {
+      if (!user.companyId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const [invoice] = await db
+        .select({ companyId: invoices.companyId })
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .limit(1);
+      if (!invoice || invoice.companyId !== user.companyId) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+
+    const result = await getCallsForInvoice({
+      invoiceId,
+      page,
+      pageSize: INVOICE_CALLS_PAGE_SIZE,
+    });
+
+    const isAgency = isAgencyRole(user.role);
+    return NextResponse.json({
+      // ADR-003: strip retell cost for company users so it never reaches the
+      // wire. Reuse the same shape /api/calls already returns.
+      data: result.data.map(({ retellCost, ...rest }) =>
+        isAgency ? { ...rest, retellCost } : rest,
+      ),
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+    });
+  }
 
   const conditions: SQL[] = [];
 

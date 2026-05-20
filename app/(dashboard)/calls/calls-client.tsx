@@ -8,6 +8,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -31,6 +32,7 @@ import type { SessionUser } from "@/lib/auth-helpers";
 import {
   billingStateBadgeVariant,
   deriveBillingState,
+  formatCents,
   type LedgerStatus,
 } from "@/lib/billing/state";
 
@@ -50,6 +52,8 @@ interface CallRow {
   ledgerStatus: LedgerStatus | null;
   // ADR-003: only present for root/admin (gated server-side).
   retellCost?: string | null;
+  // Only populated when scoped to an invoice (snapshot per call).
+  billingPriceCents?: number | null;
 }
 
 interface CallsResponse {
@@ -135,6 +139,22 @@ interface CallsClientProps {
    */
   companyId?: string;
   /**
+   * When set, scopes the calls list to a single invoice (via
+   * `billing_ledger.invoiceId`). Hides the Company and Billing filters and
+   * columns, adds a Price column, and renders the totals footer from
+   * `footerTotals`.
+   */
+  invoiceId?: string;
+  /**
+   * Totals shown under the table when `invoiceId` is set. `realCostUsd` is
+   * null for company users (ADR-003); it must be passed explicitly so the
+   * footer is computed once on the server.
+   */
+  footerTotals?: {
+    realCostUsd: number | null;
+    priceCents: number;
+  };
+  /**
    * Render the page header. Off when embedded inside another page (e.g. the
    * company detail tabs), where the parent already owns the header.
    */
@@ -144,6 +164,8 @@ interface CallsClientProps {
 export function CallsClient({
   user,
   companyId: scopedCompanyId,
+  invoiceId,
+  footerTotals,
   showHeader = true,
 }: CallsClientProps) {
   const router = useRouter();
@@ -151,6 +173,7 @@ export function CallsClient({
   const searchParams = useSearchParams();
 
   const isScoped = Boolean(scopedCompanyId);
+  const isInvoiceScope = Boolean(invoiceId);
 
   const initialPage = parseInt(searchParams.get("page") ?? "1", 10) || 1;
   const initialBilling = parseBilling(searchParams.get("billing"));
@@ -170,9 +193,13 @@ export function CallsClient({
   const companyId = isScoped ? (scopedCompanyId as string) : filterCompanyId;
 
   const isAgency = user.role === "root" || user.role === "admin";
-  const showCompanyColumn = isAgency && !isScoped;
+  const showCompanyColumn = isAgency && !isScoped && !isInvoiceScope;
   // ADR-003: Real Cost (Retell) is agency-only.
   const showRealCostColumn = isAgency;
+  // In invoice scope, every row shares the same derived billing state, so the
+  // Billing column is dropped and the per-call Price column is added instead.
+  const showBillingColumn = !isInvoiceScope;
+  const showPriceColumn = isInvoiceScope;
   const pageSize = 15;
   const isFirstSyncRef = useRef(true);
 
@@ -188,8 +215,9 @@ export function CallsClient({
   const buildFetchParams = () => {
     const params = new URLSearchParams();
     params.set("page", page.toString());
-    if (companyId) params.set("companyId", companyId);
-    if (billing) params.set("billing", billing);
+    if (invoiceId) params.set("invoiceId", invoiceId);
+    if (companyId && !isInvoiceScope) params.set("companyId", companyId);
+    if (billing && !isInvoiceScope) params.set("billing", billing);
     if (search) params.set("q", search);
     return params;
   };
@@ -198,9 +226,10 @@ export function CallsClient({
     const params = new URLSearchParams(searchParams.toString());
     if (page !== 1) params.set("page", page.toString());
     else params.delete("page");
-    if (!isScoped && companyId) params.set("companyId", companyId);
-    else if (!isScoped) params.delete("companyId");
-    if (billing) params.set("billing", billing);
+    if (!isScoped && !isInvoiceScope && companyId)
+      params.set("companyId", companyId);
+    else if (!isScoped && !isInvoiceScope) params.delete("companyId");
+    if (billing && !isInvoiceScope) params.set("billing", billing);
     else params.delete("billing");
     if (search) params.set("q", search);
     else params.delete("q");
@@ -232,10 +261,19 @@ export function CallsClient({
         return (
           (c.customerName?.toLowerCase().includes(q) ?? false) ||
           (c.customerPhone?.toLowerCase().includes(q) ?? false) ||
-          (c.companyName?.toLowerCase().includes(q) ?? false)
+          (!isInvoiceScope &&
+            (c.companyName?.toLowerCase().includes(q) ?? false))
         );
       })
     : calls;
+
+  const colSpan =
+    4 + // Customer, Phone, Status, Date
+    (showBillingColumn ? 1 : 0) +
+    (showPriceColumn ? 1 : 0) +
+    (showRealCostColumn ? 1 : 0) +
+    1 + // Duration
+    (showCompanyColumn ? 1 : 0);
 
   const body = (
     <>
@@ -246,44 +284,48 @@ export function CallsClient({
               setSearch(v);
               setPage(1);
             },
-            placeholder: "Search by name, phone or company…",
+            placeholder: isInvoiceScope
+              ? "Search by name or phone…"
+              : "Search by name, phone or company…",
           }}
           filters={
-            <>
-              {isAgency && !isScoped && (
-                <CompanyFilter
-                  value={filterCompanyId}
-                  onChange={(v) => {
-                    setFilterCompanyId(v === "all" ? "" : v);
+            isInvoiceScope ? null : (
+              <>
+                {isAgency && !isScoped && (
+                  <CompanyFilter
+                    value={filterCompanyId}
+                    onChange={(v) => {
+                      setFilterCompanyId(v === "all" ? "" : v);
+                      setPage(1);
+                    }}
+                  />
+                )}
+                <Select
+                  value={billing ?? "all"}
+                  onValueChange={(v) => {
+                    const next = v as string | null;
+                    setBilling(
+                      !next || next === "all" ? null : (next as BillingFilter),
+                    );
                     setPage(1);
                   }}
-                />
-              )}
-              <Select
-                value={billing ?? "all"}
-                onValueChange={(v) => {
-                  const next = v as string | null;
-                  setBilling(
-                    !next || next === "all" ? null : (next as BillingFilter),
-                  );
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="All billing states" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all">All billing states</SelectItem>
-                    {BILLING_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </>
+                >
+                  <SelectTrigger className="w-56">
+                    <SelectValue placeholder="All billing states" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">All billing states</SelectItem>
+                      {BILLING_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </>
+            )
           }
         />
 
@@ -299,7 +341,10 @@ export function CallsClient({
                 <TableHead>Customer</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Billing</TableHead>
+                {showBillingColumn && <TableHead>Billing</TableHead>}
+                {showPriceColumn && (
+                  <TableHead className="text-right">Price</TableHead>
+                )}
                 {showRealCostColumn && (
                   <TableHead className="text-right">Real Cost</TableHead>
                 )}
@@ -312,11 +357,7 @@ export function CallsClient({
               {filteredCalls.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={
-                      6 +
-                      (showCompanyColumn ? 1 : 0) +
-                      (showRealCostColumn ? 1 : 0)
-                    }
+                    colSpan={colSpan}
                     className="h-32 text-center text-sm text-muted-foreground"
                   >
                     No calls found
@@ -344,15 +385,22 @@ export function CallsClient({
                         {call.customerPhone ?? "—"}
                       </TableCell>
                       <TableCell>{statusBadge(call.callStatus)}</TableCell>
-                      <TableCell>
-                        {billingState ? (
-                          <Badge variant={billingStateBadgeVariant(billingState)}>
-                            {billingState}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
+                      {showBillingColumn && (
+                        <TableCell>
+                          {billingState ? (
+                            <Badge variant={billingStateBadgeVariant(billingState)}>
+                              {billingState}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
+                      {showPriceColumn && (
+                        <TableCell className="text-right tabular-nums">
+                          {formatCents(call.billingPriceCents)}
+                        </TableCell>
+                      )}
                       {showRealCostColumn && (
                         <TableCell className="text-right tabular-nums text-muted-foreground">
                           {formatRetellCost(call.retellCost)}
@@ -375,6 +423,27 @@ export function CallsClient({
                 })
               )}
             </TableBody>
+            {showPriceColumn && footerTotals && (
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={3} className="text-right text-muted-foreground">
+                    Total
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCents(footerTotals.priceCents)}
+                  </TableCell>
+                  {showRealCostColumn && (
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {footerTotals.realCostUsd !== null
+                        ? `$${footerTotals.realCostUsd.toFixed(2)}`
+                        : "—"}
+                    </TableCell>
+                  )}
+                  <TableCell />
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
+            )}
           </Table>
           <DataTablePagination
             page={page}
