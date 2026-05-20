@@ -5,8 +5,10 @@ import Link from "next/link";
 import {
   AlertTriangleIcon,
   CreditCardIcon,
+  ExternalLinkIcon,
   Eye,
   MoreHorizontalIcon,
+  PhoneCallIcon,
   ZapIcon,
   XIcon,
 } from "lucide-react";
@@ -47,6 +49,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { StatsGrid } from "@/components/dashboard/stats-grid";
 import { StatCard, type TrendDirection } from "@/components/dashboard/stat-card";
@@ -768,26 +776,44 @@ export function AgencyBillingClient({ role }: Props) {
                     {inv.attemptCount}
                   </TableCell>
                   <TableCell className="text-right">
-                    {inv.hostedInvoiceUrl ? (
-                      <a
-                        href={inv.hostedInvoiceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label="View invoice in Stripe"
-                      >
-                        <Button variant="ghost" size="icon-sm">
-                          <MoreHorizontalIcon />
-                        </Button>
-                      </a>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled
-                        aria-label="No external link"
-                      >
-                        <MoreHorizontalIcon />
-                      </Button>
+                    {inv.status === "creation_failed" ? null : (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Invoice actions"
+                            >
+                              <MoreHorizontalIcon />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            render={
+                              <Link href={`/billing/invoices/${inv.id}/calls`}>
+                                <PhoneCallIcon />
+                                View related calls
+                              </Link>
+                            }
+                          />
+                          {inv.hostedInvoiceUrl && (
+                            <DropdownMenuItem
+                              render={
+                                <a
+                                  href={inv.hostedInvoiceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <ExternalLinkIcon />
+                                  Open in Stripe
+                                </a>
+                              }
+                            />
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </TableCell>
                 </TableRow>

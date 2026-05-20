@@ -23,7 +23,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CreditCardIcon } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CreditCardIcon, MoreHorizontalIcon, PhoneCallIcon } from "lucide-react";
+import Link from "next/link";
 import { CardSetupForm } from "@/components/billing/card-setup-form";
 
 interface InvoiceRow {
@@ -280,17 +287,34 @@ export function StaffAdminBillingClient() {
                     <TableCell>{invoiceStatusBadge(inv.status)}</TableCell>
                     <TableCell>{inv.entryCount}</TableCell>
                     <TableCell className="text-right">
-                      {inv.hostedInvoiceUrl ? (
-                        <a
-                          href={inv.hostedInvoiceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary underline-offset-4 hover:underline"
-                        >
-                          View invoice
-                        </a>
-                      ) : (
+                      {inv.status === "creation_failed" ? (
                         <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Invoice actions"
+                              >
+                                <MoreHorizontalIcon />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              render={
+                                <Link
+                                  href={`/billing/invoices/${inv.id}/calls`}
+                                >
+                                  <PhoneCallIcon />
+                                  View related calls
+                                </Link>
+                              }
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </TableCell>
                   </TableRow>
