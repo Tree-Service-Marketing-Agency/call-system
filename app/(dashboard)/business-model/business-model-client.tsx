@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   Card,
   CardContent,
@@ -50,7 +51,7 @@ export function BusinessModelClient() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetch("/api/business-model")
       .then((res) => res.json())
       .then((data) => {
@@ -62,7 +63,7 @@ export function BusinessModelClient() {
         setSavedMinBillableSeconds(data.minBillableDurationSeconds);
         setUpdatedAt(data.updatedAt);
       });
-  }, []);
+  });
 
   async function handleSave() {
     const priceCents = usdStringToCents(priceUsd);

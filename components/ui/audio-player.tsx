@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Play, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { cn } from "@/lib/utils";
 
 function formatTime(seconds: number): string {
@@ -21,12 +22,22 @@ export function AudioPlayer({
   src: string;
   className?: string;
 }) {
+  return <AudioPlayerInner key={src} src={src} className={className} />;
+}
+
+function AudioPlayerInner({
+  src,
+  className,
+}: {
+  src: string;
+  className?: string;
+}) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const audio = audioRef.current;
     return () => {
       if (audio) {
@@ -34,7 +45,7 @@ export function AudioPlayer({
         audio.currentTime = 0;
       }
     };
-  }, [src]);
+  });
 
   const handleToggle = () => {
     const audio = audioRef.current;

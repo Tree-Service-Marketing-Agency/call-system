@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -55,10 +56,9 @@ export function OnboardingClient() {
 
   // Generate the password on the client after mount: doing it during render
   // would produce a hydration mismatch since SSR has no crypto entropy.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  useMountEffect(() => {
     setPassword(generatePassword());
-  }, []);
+  });
 
   function resetForm() {
     setName("");

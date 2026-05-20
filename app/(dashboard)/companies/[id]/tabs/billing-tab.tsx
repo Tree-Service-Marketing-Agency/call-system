@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { ExternalLinkIcon } from "lucide-react";
 
 import {
@@ -72,21 +73,29 @@ export function BillingTab({ companyId }: { companyId: string }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
-  const fetchInvoices = useCallback(() => {
-    const params = new URLSearchParams();
-    params.set("page", page.toString());
-    params.set("pageSize", PAGE_SIZE.toString());
-    fetch(`/api/companies/${companyId}/invoices?${params.toString()}`)
-      .then((res) => res.json())
-      .then((data: InvoicesResponse) => {
-        setInvoices(data.data ?? []);
-        setTotal(data.total ?? 0);
-      });
-  }, [companyId, page]);
+  const fetchInvoices = useCallback(
+    (nextPage: number) => {
+      const params = new URLSearchParams();
+      params.set("page", nextPage.toString());
+      params.set("pageSize", PAGE_SIZE.toString());
+      fetch(`/api/companies/${companyId}/invoices?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data: InvoicesResponse) => {
+          setInvoices(data.data ?? []);
+          setTotal(data.total ?? 0);
+        });
+    },
+    [companyId],
+  );
 
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
+  useMountEffect(() => {
+    fetchInvoices(page);
+  });
+
+  function handlePageChange(nextPage: number) {
+    setPage(nextPage);
+    fetchInvoices(nextPage);
+  }
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
@@ -148,7 +157,7 @@ export function BillingTab({ companyId }: { companyId: string }) {
         pageSize={PAGE_SIZE}
         total={total}
         itemLabel="invoices"
-        onPageChange={setPage}
+        onPageChange={handlePageChange}
       />
     </div>
   );

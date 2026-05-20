@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { PlusIcon } from "lucide-react";
 
 import {
@@ -50,9 +51,9 @@ export function UsersClient({ user }: { user: SessionUser }) {
       .then((data) => setUsersList(data.data ?? []));
   }
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetchUsers();
-  }, []);
+  });
 
   async function toggleActive(userId: string, isActive: boolean) {
     await fetch(`/api/users/${userId}`, {

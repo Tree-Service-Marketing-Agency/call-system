@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useState, useRef } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { AlertCircleIcon } from "lucide-react";
 
@@ -201,59 +202,68 @@ export function CallsClient({
   const showBillingColumn = !isInvoiceScope;
   const showPriceColumn = isInvoiceScope;
   const pageSize = 15;
-  const isFirstSyncRef = useRef(true);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchCalls = (qs: URLSearchParams) => {
-    fetch(`/api/calls?${qs.toString()}`)
-      .then((res) => res.json())
-      .then((data: CallsResponse) => {
-        setCalls(data.data);
-        setTotal(data.total);
-      });
-  };
+  const fetchCalls = useCallback(
+    (filters: {
+      page: number;
+      search: string;
+      billing: BillingFilter | null;
+      companyId: string;
+    }) => {
+      const params = new URLSearchParams();
+      params.set("page", filters.page.toString());
+      if (invoiceId) params.set("invoiceId", invoiceId);
+      if (filters.companyId && !isInvoiceScope)
+        params.set("companyId", filters.companyId);
+      if (filters.billing && !isInvoiceScope)
+        params.set("billing", filters.billing);
+      if (filters.search) params.set("q", filters.search);
+      fetch(`/api/calls?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data: CallsResponse) => {
+          setCalls(data.data);
+          setTotal(data.total);
+        });
+    },
+    [invoiceId, isInvoiceScope],
+  );
 
-  const buildFetchParams = () => {
-    const params = new URLSearchParams();
-    params.set("page", page.toString());
-    if (invoiceId) params.set("invoiceId", invoiceId);
-    if (companyId && !isInvoiceScope) params.set("companyId", companyId);
-    if (billing && !isInvoiceScope) params.set("billing", billing);
-    if (search) params.set("q", search);
-    return params;
-  };
+  const scheduleFetch = useCallback(
+    (filters: {
+      page: number;
+      search: string;
+      billing: BillingFilter | null;
+      companyId: string;
+    }) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const urlParams = new URLSearchParams(searchParams.toString());
+        if (filters.page !== 1) urlParams.set("page", filters.page.toString());
+        else urlParams.delete("page");
+        if (!isScoped && !isInvoiceScope && filters.companyId)
+          urlParams.set("companyId", filters.companyId);
+        else if (!isScoped && !isInvoiceScope) urlParams.delete("companyId");
+        if (filters.billing && !isInvoiceScope)
+          urlParams.set("billing", filters.billing);
+        else urlParams.delete("billing");
+        if (filters.search) urlParams.set("q", filters.search);
+        else urlParams.delete("q");
+        const next = urlParams.toString();
+        const url = next ? `${pathname}?${next}` : pathname;
+        router.replace(url, { scroll: false });
+        fetchCalls(filters);
+      }, FILTER_DEBOUNCE_MS);
+    },
+    [searchParams, isScoped, isInvoiceScope, pathname, router, fetchCalls],
+  );
 
-  const buildUrlParams = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (page !== 1) params.set("page", page.toString());
-    else params.delete("page");
-    if (!isScoped && !isInvoiceScope && companyId)
-      params.set("companyId", companyId);
-    else if (!isScoped && !isInvoiceScope) params.delete("companyId");
-    if (billing && !isInvoiceScope) params.set("billing", billing);
-    else params.delete("billing");
-    if (search) params.set("q", search);
-    else params.delete("q");
-    return params;
-  };
-
-  useEffect(() => {
-    if (isFirstSyncRef.current) {
-      isFirstSyncRef.current = false;
-      fetchCalls(buildFetchParams());
-      return;
-    }
-
-    const handle = setTimeout(() => {
-      const params = buildUrlParams();
-      const next = params.toString();
-      const url = next ? `${pathname}?${next}` : pathname;
-      router.replace(url, { scroll: false });
-      fetchCalls(buildFetchParams());
-    }, FILTER_DEBOUNCE_MS);
-
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, billing, companyId]);
+  useMountEffect(() => {
+    fetchCalls({ page, search, billing, companyId });
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  });
 
   const filteredCalls = search
     ? calls.filter((c) => {
@@ -283,6 +293,12 @@ export function CallsClient({
             onChange: (v) => {
               setSearch(v);
               setPage(1);
+              scheduleFetch({
+                page: 1,
+                search: v,
+                billing,
+                companyId,
+              });
             },
             placeholder: isInvoiceScope
               ? "Search by name or phone…"
@@ -295,8 +311,15 @@ export function CallsClient({
                   <CompanyFilter
                     value={filterCompanyId}
                     onChange={(v) => {
-                      setFilterCompanyId(v === "all" ? "" : v);
+                      const nextCompanyId = v === "all" ? "" : v;
+                      setFilterCompanyId(nextCompanyId);
                       setPage(1);
+                      scheduleFetch({
+                        page: 1,
+                        search,
+                        billing,
+                        companyId: nextCompanyId,
+                      });
                     }}
                   />
                 )}
@@ -304,10 +327,16 @@ export function CallsClient({
                   value={billing ?? "all"}
                   onValueChange={(v) => {
                     const next = v as string | null;
-                    setBilling(
-                      !next || next === "all" ? null : (next as BillingFilter),
-                    );
+                    const nextBilling =
+                      !next || next === "all" ? null : (next as BillingFilter);
+                    setBilling(nextBilling);
                     setPage(1);
+                    scheduleFetch({
+                      page: 1,
+                      search,
+                      billing: nextBilling,
+                      companyId,
+                    });
                   }}
                 >
                   <SelectTrigger className="w-56">
@@ -450,14 +479,19 @@ export function CallsClient({
             pageSize={pageSize}
             total={total}
             itemLabel="calls"
-            onPageChange={setPage}
+            onPageChange={(p) => {
+              setPage(p);
+              scheduleFetch({ page: p, search, billing, companyId });
+            }}
           />
         </div>
 
         <CallDetailSheet
           callId={selectedCallId}
           onClose={() => setSelectedCallId(null)}
-          onMutated={() => fetchCalls(buildFetchParams())}
+          onMutated={() =>
+            fetchCalls({ page, search, billing, companyId })
+          }
         />
     </>
   );

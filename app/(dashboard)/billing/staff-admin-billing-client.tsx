@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   Card,
   CardContent,
@@ -118,9 +119,9 @@ export function StaffAdminBillingClient() {
       .then(setData);
   }, []);
 
-  useEffect(() => {
+  useMountEffect(() => {
     refresh();
-  }, [refresh]);
+  });
 
   async function openPortal() {
     setOpeningPortal(true);

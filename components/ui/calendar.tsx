@@ -190,6 +190,9 @@ function CalendarDayButton({
   const defaultClassNames = getDefaultClassNames()
 
   const ref = React.useRef<HTMLButtonElement>(null)
+  // react-day-picker flips modifiers.focused on the same instance during
+  // keyboard navigation, which the useMountEffect / key-remount patterns
+  // can't model without losing focus.
   React.useEffect(() => {
     if (modifiers.focused) ref.current?.focus()
   }, [modifiers.focused])
