@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   Table,
   TableBody,
@@ -32,11 +33,11 @@ function formatDuration(ms: number | null): string {
 export function CustomerCallsExpanded({ phone }: { phone: string }) {
   const [callsList, setCallsList] = useState<CallRow[]>([]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetch(`/api/customers/${encodeURIComponent(phone)}/calls`)
       .then((res) => res.json())
       .then((data) => setCallsList(data.data ?? []));
-  }, [phone]);
+  });
 
   return (
     <div className="p-4">

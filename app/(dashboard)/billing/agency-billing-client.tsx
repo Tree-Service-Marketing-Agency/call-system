@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import Link from "next/link";
 import {
   AlertTriangleIcon,
@@ -265,10 +266,6 @@ function ThresholdCard({
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<string | null>(null);
 
-  useEffect(() => {
-    setValue(initial);
-  }, [initial]);
-
   const dirty = value !== initial;
 
   async function save() {
@@ -411,9 +408,9 @@ export function AgencyBillingClient({ role }: Props) {
       .then((json: GlobalBillingData) => setData(json));
   }, []);
 
-  useEffect(() => {
+  useMountEffect(() => {
     refresh();
-  }, [refresh]);
+  });
 
   const filteredCompanies = useMemo(() => {
     if (!data) return [];
@@ -513,6 +510,7 @@ export function AgencyBillingClient({ role }: Props) {
       </StatsGrid>
 
       <ThresholdCard
+        key={data.thresholdCalls}
         thresholdCalls={data.thresholdCalls}
         pricePerCallCents={data.pricePerCallCents}
         isRoot={role === "root"}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -157,7 +158,9 @@ export function CardSetupForm({ onSuccess, onCancel }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const didFetch = useRef(false);
 
-  useEffect(() => {
+  // StrictMode double-invokes mount effects in dev; the ref keeps the POST
+  // exactly once.
+  useMountEffect(() => {
     if (didFetch.current) return;
     didFetch.current = true;
     fetch("/api/billing/setup-intent", { method: "POST" })
@@ -174,7 +177,7 @@ export function CardSetupForm({ onSuccess, onCancel }: Props) {
         setPrefillEmail(data.prefillEmail ?? undefined);
       })
       .catch((err) => setLoadError(err.message));
-  }, []);
+  });
 
   const stripePromise = useMemo<Promise<Stripe | null> | null>(() => {
     if (!publishableKey) return null;

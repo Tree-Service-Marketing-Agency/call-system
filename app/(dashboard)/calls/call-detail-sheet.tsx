@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   CalendarIcon,
   ClockIcon,
@@ -189,7 +191,7 @@ function InlineAudioPlayer({ src }: { src: string }) {
   const [playbackRate, setPlaybackRate] = useState(1);
   const wasPlayingRef = useRef(false);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const audio = audioRef.current;
     return () => {
       if (audio) {
@@ -197,12 +199,7 @@ function InlineAudioPlayer({ src }: { src: string }) {
         audio.currentTime = 0;
       }
     };
-  }, [src]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) audio.playbackRate = playbackRate;
-  }, [playbackRate]);
+  });
 
   function toggle() {
     const audio = audioRef.current;
@@ -361,7 +358,12 @@ function InlineAudioPlayer({ src }: { src: string }) {
               <DropdownMenuContent align="end" className="min-w-[7rem]">
                 <DropdownMenuRadioGroup
                   value={String(playbackRate)}
-                  onValueChange={(value) => setPlaybackRate(Number(value))}
+                  onValueChange={(value) => {
+                    const rate = Number(value);
+                    setPlaybackRate(rate);
+                    const audio = audioRef.current;
+                    if (audio) audio.playbackRate = rate;
+                  }}
                 >
                   {PLAYBACK_SPEEDS.map((speed) => (
                     <DropdownMenuRadioItem
@@ -391,14 +393,63 @@ export function CallDetailSheet({
   onClose: () => void;
   onMutated?: () => void;
 }) {
+  // displayId trails callId by ~150ms when closing so the sheet's close
+  // animation doesn't flash "Loading…" — instead the previous content stays
+  // visible while it slides out. Updated at render time when callId opens to
+  // a new value, and via setTimeout (with closure-captured id) when it closes.
+  const [displayId, setDisplayId] = useState<string | null>(callId);
+  const [prevCallId, setPrevCallId] = useState<string | null>(callId);
+
+  if (callId !== prevCallId) {
+    setPrevCallId(callId);
+    if (callId) setDisplayId(callId);
+  }
+
+  function handleOpenChange(open: boolean) {
+    if (open) return;
+    onClose();
+    const closingId = displayId;
+    setTimeout(() => {
+      setDisplayId((curr) => (curr === closingId ? null : curr));
+    }, 150);
+  }
+
+  return (
+    <Sheet open={!!callId} onOpenChange={handleOpenChange}>
+      <SheetContent
+        className="flex w-full flex-col gap-0 bg-card p-0 sm:max-w-[560px]"
+      >
+        <SheetTitle className="sr-only">Call details</SheetTitle>
+        <SheetDescription className="sr-only">Call details</SheetDescription>
+        {displayId ? (
+          <CallDetailContent
+            key={displayId}
+            callId={displayId}
+            onMutated={onMutated}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+            Loading…
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function CallDetailContent({
+  callId,
+  onMutated,
+}: {
+  callId: string;
+  onMutated?: () => void;
+}) {
   const [call, setCall] = useState<CallDetail | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!callId) return;
+  useMountEffect(() => {
     let cancelled = false;
-    setError(null);
     fetch(`/api/calls/${callId}`)
       .then((res) => res.json())
       .then((data) => {
@@ -407,22 +458,9 @@ export function CallDetailSheet({
     return () => {
       cancelled = true;
     };
-  }, [callId]);
-
-  // Reset content when sheet closes (avoids the previous record flashing on
-  // next open).
-  useEffect(() => {
-    if (!callId && call) {
-      const t = setTimeout(() => {
-        setCall(null);
-        setError(null);
-      }, 150);
-      return () => clearTimeout(t);
-    }
-  }, [callId, call]);
+  });
 
   async function mutateBilling(action: "void" | "restore") {
-    if (!callId) return;
     setPending(true);
     setError(null);
     try {
@@ -455,23 +493,17 @@ export function CallDetailSheet({
     call?.audioUrl && !isAudioExpired(call.createdAt),
   );
 
-  return (
-    <Sheet open={!!callId} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent
-        className="flex w-full flex-col gap-0 bg-card p-0 sm:max-w-[560px]"
-      >
-        <SheetTitle className="sr-only">Call details</SheetTitle>
-        <SheetDescription className="sr-only">
-          {call?.callId ?? "Call details"}
-        </SheetDescription>
+  if (!call) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
 
-        {!call ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Loading…
-          </div>
-        ) : (
-          <>
-            {/* Header */}
+  return (
+    <>
+      {/* Header */}
             <div className="flex flex-col gap-3 border-b border-border px-6 pt-5 pb-4">
               <div className="flex items-start gap-3 pr-9">
                 <Avatar name={customer} size="lg" />
@@ -522,7 +554,7 @@ export function CallDetailSheet({
             {/* Audio */}
             {call.audioUrl ? (
               audioAvailable ? (
-                <InlineAudioPlayer src={call.audioUrl} />
+                <InlineAudioPlayer key={call.audioUrl} src={call.audioUrl} />
               ) : (
                 <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-6 py-3 text-xs text-muted-foreground">
                   <Badge variant="destructive">Expired</Badge>
@@ -730,9 +762,6 @@ export function CallDetailSheet({
                 </Button>
               </div>
             )}
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
+    </>
   );
 }

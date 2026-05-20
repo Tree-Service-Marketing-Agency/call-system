@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { DollarSignIcon } from "lucide-react";
 
 interface SidebarBillingProps {
@@ -17,7 +18,7 @@ interface BillingSummary {
 export function SidebarBilling({}: SidebarBillingProps) {
   const [data, setData] = useState<BillingSummary | null>(null);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetch("/api/billing")
       .then((res) => res.json())
       .then((d) => {
@@ -30,7 +31,7 @@ export function SidebarBilling({}: SidebarBillingProps) {
         }
       })
       .catch(() => {});
-  }, []);
+  });
 
   const balance = data ? `$${(data.balanceCents / 100).toFixed(2)}` : "—";
   const counter = data

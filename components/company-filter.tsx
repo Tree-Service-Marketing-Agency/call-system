@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   Select,
   SelectContent,
@@ -24,11 +25,11 @@ export function CompanyFilter({
 }) {
   const [companies, setCompanies] = useState<Company[]>([]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetch("/api/companies?minimal=true")
       .then((res) => res.json())
       .then((data) => setCompanies(data.data ?? []));
-  }, []);
+  });
 
   const nameById = new Map(companies.map((c) => [c.id, c.name]));
 

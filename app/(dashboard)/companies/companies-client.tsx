@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { DownloadIcon, PlusIcon } from "lucide-react";
 
@@ -51,42 +52,45 @@ export function CompaniesClient() {
   const [page, setPage] = useState(initialPage);
   const [search, setSearch] = useState(initialSearch);
   const [showCreate, setShowCreate] = useState(false);
-  const isFirstSyncRef = useRef(true);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchCompanies = useCallback((qs: URLSearchParams) => {
-    fetch(`/api/companies?${qs.toString()}`)
-      .then((res) => res.json())
-      .then((data: CompaniesResponse) => {
-        setCompanies(data.data ?? []);
-        setTotal(data.total ?? 0);
-      });
-  }, []);
+  const fetchCompanies = useCallback(
+    (nextPage: number, nextSearch: string) => {
+      const params = new URLSearchParams();
+      params.set("page", nextPage.toString());
+      params.set("pageSize", PAGE_SIZE.toString());
+      if (nextSearch) params.set("q", nextSearch);
+      fetch(`/api/companies?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data: CompaniesResponse) => {
+          setCompanies(data.data ?? []);
+          setTotal(data.total ?? 0);
+        });
+    },
+    [],
+  );
 
-  useEffect(() => {
-    const params = new URLSearchParams();
-    params.set("page", page.toString());
-    params.set("pageSize", PAGE_SIZE.toString());
-    if (search) params.set("q", search);
+  const scheduleFetch = useCallback(
+    (nextPage: number, nextSearch: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const urlParams = new URLSearchParams();
+        if (nextPage !== 1) urlParams.set("page", nextPage.toString());
+        if (nextSearch) urlParams.set("q", nextSearch);
+        const qs = urlParams.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        fetchCompanies(nextPage, nextSearch);
+      }, FILTER_DEBOUNCE_MS);
+    },
+    [router, pathname, fetchCompanies],
+  );
 
-    if (isFirstSyncRef.current) {
-      isFirstSyncRef.current = false;
-      fetchCompanies(params);
-      return;
-    }
-
-    const handle = setTimeout(() => {
-      const urlParams = new URLSearchParams();
-      if (page !== 1) urlParams.set("page", page.toString());
-      if (search) urlParams.set("q", search);
-      const next = urlParams.toString();
-      router.replace(next ? `${pathname}?${next}` : pathname, {
-        scroll: false,
-      });
-      fetchCompanies(params);
-    }, FILTER_DEBOUNCE_MS);
-
-    return () => clearTimeout(handle);
-  }, [page, search, fetchCompanies, pathname, router]);
+  useMountEffect(() => {
+    fetchCompanies(page, search);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  });
 
   return (
     <>
@@ -108,6 +112,7 @@ export function CompaniesClient() {
             onChange: (v) => {
               setSearch(v);
               setPage(1);
+              scheduleFetch(1, v);
             },
             placeholder: "Search companies…",
           }}
@@ -171,7 +176,10 @@ export function CompaniesClient() {
             pageSize={PAGE_SIZE}
             total={total}
             itemLabel="companies"
-            onPageChange={setPage}
+            onPageChange={(p) => {
+              setPage(p);
+              scheduleFetch(p, search);
+            }}
           />
         </div>
 

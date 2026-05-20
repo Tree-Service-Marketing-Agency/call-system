@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import Link from "next/link";
 import {
   usePathname,
@@ -75,9 +76,9 @@ export function CompanyDetailClient({
       .then((data: CompanyDetail) => setCompany(data));
   }, [companyId]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetchCompany();
-  }, [fetchCompany]);
+  });
 
   const setTab = useCallback(
     (next: TabValue) => {

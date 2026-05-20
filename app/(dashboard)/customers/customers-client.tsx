@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useState, useCallback } from "react";
+import { Fragment, useState, useCallback } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 
 import {
   Table,
@@ -36,22 +37,25 @@ export function CustomersClient({ user }: { user: SessionUser }) {
   const isAgency = user.role === "root" || user.role === "admin";
   const pageSize = 15;
 
-  const fetchCustomers = useCallback(() => {
-    const params = new URLSearchParams({ page: page.toString() });
-    if (companyFilter && companyFilter !== "all")
-      params.set("companyId", companyFilter);
+  const fetchCustomers = useCallback(
+    (nextPage: number, nextCompanyFilter: string) => {
+      const params = new URLSearchParams({ page: nextPage.toString() });
+      if (nextCompanyFilter && nextCompanyFilter !== "all")
+        params.set("companyId", nextCompanyFilter);
 
-    fetch(`/api/customers?${params}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setCustomers(data.data);
-        setTotal(data.total);
-      });
-  }, [page, companyFilter]);
+      fetch(`/api/customers?${params}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setCustomers(data.data);
+          setTotal(data.total);
+        });
+    },
+    [],
+  );
 
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+  useMountEffect(() => {
+    fetchCustomers(page, companyFilter);
+  });
 
   const filtered = search
     ? customers.filter((c) => {
@@ -88,6 +92,7 @@ export function CustomersClient({ user }: { user: SessionUser }) {
                 onChange={(v) => {
                   setCompanyFilter(v);
                   setPage(1);
+                  fetchCustomers(1, v);
                 }}
               />
             ) : null
@@ -170,7 +175,10 @@ export function CustomersClient({ user }: { user: SessionUser }) {
             pageSize={pageSize}
             total={total}
             itemLabel="customers"
-            onPageChange={setPage}
+            onPageChange={(p) => {
+              setPage(p);
+              fetchCustomers(p, companyFilter);
+            }}
           />
         </div>
       </PageBody>
