@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import bcryptjs from "bcryptjs";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
@@ -24,7 +25,31 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (targetUser.role === "root") {
+  const isPasswordReset = body.password !== undefined;
+  const isSelf = targetUser.id === currentUser.id;
+  const hasNonPasswordUpdate =
+    body.email !== undefined ||
+    body.isActive !== undefined ||
+    body.role !== undefined;
+  const canResetAgencyPassword =
+    currentUser.role === "root" &&
+    (targetUser.role === "admin" || (targetUser.role === "root" && isSelf));
+
+  if (isPasswordReset && !canResetAgencyPassword) {
+    return NextResponse.json(
+      { error: "Only root can reset admin passwords or their own password" },
+      { status: 403 },
+    );
+  }
+
+  if (isPasswordReset && hasNonPasswordUpdate) {
+    return NextResponse.json(
+      { error: "Password reset cannot be combined with other updates" },
+      { status: 400 },
+    );
+  }
+
+  if (targetUser.role === "root" && !isPasswordReset) {
     return NextResponse.json(
       { error: "Cannot modify root user" },
       { status: 403 },
@@ -51,6 +76,16 @@ export async function PATCH(
   if (body.isActive !== undefined) updates.isActive = body.isActive;
   if (body.role !== undefined && body.role !== "root" && body.role !== "admin") {
     updates.role = body.role;
+  }
+  if (isPasswordReset) {
+    if (typeof body.password !== "string" || body.password.length < 8) {
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters" },
+        { status: 400 },
+      );
+    }
+
+    updates.password = await bcryptjs.hash(body.password, 10);
   }
 
   await db.update(users).set(updates).where(eq(users.id, id));
