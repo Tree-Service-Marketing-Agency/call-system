@@ -20,6 +20,14 @@ _Avoid_: "tenant user", "client user".
 - `staff_admin` — company user con permisos elevados dentro de su compañía (gestionar staff, ver billing).
 - `staff` — company user de solo lectura sobre los datos de su compañía.
 
+**Password reset**:
+Reemplazo manual de la contraseña de un **Agency user** cuando la agencia necesita recuperar acceso; solo `root` puede ejecutarlo sobre usuarios `admin` o sobre su propia cuenta `root`.
+_Avoid_: "actualizar contraseña" (se confunde con cambio hecho por el propio usuario), "change password".
+
+**Temporary password**:
+Contraseña nueva que el sistema muestra una sola vez al crear un usuario o ejecutar **Password reset**; la contraseña actual nunca es visible porque se almacena hasheada.
+_Avoid_: "ver password actual", "consultar password".
+
 ### Llamadas
 
 **Call**:
@@ -97,6 +105,8 @@ _Avoid_: "isDisabled" (uso informal del campo), "enabled" (polaridad invertida),
 - Una entry en `void` no puede llegar a `reserved` ni a `paid` sin pasar primero por `pending` vía **Restore**.
 - El cron dispara cobro cuando **Pending calls count** ≥ **Billing threshold**. El **Pending balance** define el monto del **Invoice**, no el trigger. **Void** y **Restore** modifican ambos (count y balance) al cambiar el status del ledger.
 - Una **Company** tiene cero o más **Notification phones** en `companies.notification_phones`. La API externa `by-agent` los expone **todos**, incluidos los **Disabled**; n8n decide a quién notifica filtrando por `disabled`.
+- Un **Password reset** cambia la contraseña que se usará en próximos logins, pero no revoca sesiones activas en esta iteración.
+- Un **Password reset** ejecutado por `root`, incluso sobre su propia cuenta, no requiere capturar la contraseña actual; se confirma la generación de una **Temporary password**.
 
 ## Example dialogue
 

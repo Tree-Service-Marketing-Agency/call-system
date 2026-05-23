@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMountEffect } from "@/hooks/use-mount-effect";
-import { PlusIcon } from "lucide-react";
+import { KeyRoundIcon, PlusIcon } from "lucide-react";
 
 import {
   Table,
@@ -27,6 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { CreateAgencyUserDialog } from "@/components/create-agency-user-dialog";
+import { ResetAgencyPasswordDialog } from "@/components/reset-agency-password-dialog";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageBody } from "@/components/layout/page-body";
 import { FilterBar } from "@/components/dashboard/filter-bar";
@@ -42,6 +43,7 @@ interface AgencyUserRow {
 export function UsersClient({ user }: { user: SessionUser }) {
   const [usersList, setUsersList] = useState<AgencyUserRow[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [resetTarget, setResetTarget] = useState<AgencyUserRow | null>(null);
   const [search, setSearch] = useState("");
   const isRoot = user.role === "root";
 
@@ -123,6 +125,8 @@ export function UsersClient({ user }: { user: SessionUser }) {
               ) : (
                 filtered.map((u) => {
                   const canMutate = isRoot && u.role !== "root";
+                  const canResetPassword =
+                    isRoot && (u.role === "admin" || u.id === user.id);
                   return (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{u.email}</TableCell>
@@ -139,37 +143,51 @@ export function UsersClient({ user }: { user: SessionUser }) {
                         />
                       </TableCell>
                       <TableCell className="text-right">
-                        {canMutate && (
-                          <AlertDialog>
-                            <AlertDialogTrigger
-                              render={
-                                <Button variant="destructive" size="sm">
-                                  Delete
-                                </Button>
-                              }
-                            />
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Delete user &ldquo;{u.email}&rdquo;?
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This will permanently delete the user. This
-                                  action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  variant="destructive"
-                                  onClick={() => deleteUser(u.id)}
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
+                        <div className="flex justify-end gap-2">
+                          {canResetPassword && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setResetTarget(u)}
+                            >
+                              <KeyRoundIcon data-icon="inline-start" />
+                              Reset password
+                            </Button>
+                          )}
+                          {canMutate && (
+                            <AlertDialog>
+                              <AlertDialogTrigger
+                                render={
+                                  <Button variant="destructive" size="sm">
+                                    Delete
+                                  </Button>
+                                }
+                              />
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Delete user &ldquo;{u.email}&rdquo;?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete the user. This
+                                    action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    variant="destructive"
+                                    onClick={() => deleteUser(u.id)}
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -187,6 +205,16 @@ export function UsersClient({ user }: { user: SessionUser }) {
             fetchUsers();
           }}
         />
+
+        {resetTarget && (
+          <ResetAgencyPasswordDialog
+            open={resetTarget !== null}
+            target={resetTarget}
+            onOpenChange={(open) => {
+              if (!open) setResetTarget(null);
+            }}
+          />
+        )}
       </PageBody>
     </>
   );
