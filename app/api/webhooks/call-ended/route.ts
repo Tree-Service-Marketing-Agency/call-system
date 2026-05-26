@@ -10,6 +10,7 @@ import { isBillableDisconnection } from "@/lib/billing/rules";
 import { resolveBillingOutcome } from "@/lib/billing/resolve-billing-outcome";
 import { verifyN8nSecret } from "@/lib/webhook-auth";
 import { mapCallEndedPayload } from "@/lib/calls/map-call-ended-payload";
+import { buildPublicRecordingLink } from "@/lib/public-recording-link";
 
 // ADR-004/006: payload comes from n8n (Retell → n8n → Lola). Auth is a shared
 // bearer secret. Since ADR-006, call_ended is the single ingestion webhook:
@@ -163,7 +164,11 @@ export async function POST(request: Request) {
         JSON.stringify({ call_id, agent_id })
       );
     }
-    return new NextResponse(null, { status: 204 });
+    // ADR-009: return the Public recording link so n8n can distribute it.
+    return NextResponse.json(
+      { id: callRowId, url: buildPublicRecordingLink(callRowId) },
+      { status: 200 },
+    );
   }
 
   // companyId is non-null past this point (resolver returned 'no_ledger' otherwise).
@@ -207,7 +212,11 @@ export async function POST(request: Request) {
       );
     });
 
-    return new NextResponse(null, { status: 204 });
+    // ADR-009: return the Public recording link so n8n can distribute it.
+    return NextResponse.json(
+      { id: callRowId, url: buildPublicRecordingLink(callRowId) },
+      { status: 200 },
+    );
   }
 
   // 'pending' → normal billable flow (unchanged): insert pending, +balance,
@@ -260,7 +269,11 @@ export async function POST(request: Request) {
     );
   });
 
-  return new NextResponse(null, { status: 204 });
+  // ADR-009: return the Public recording link so n8n can distribute it.
+  return NextResponse.json(
+    { id: callRowId, url: buildPublicRecordingLink(callRowId) },
+    { status: 200 },
+  );
 }
 
 function hasValue(value: string | null | undefined): boolean {
