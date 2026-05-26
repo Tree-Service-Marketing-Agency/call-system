@@ -11,6 +11,18 @@
       "sourceType": "github",
       "computedHash": "4a543f93d3edc770a684aa554321ca113debc74b276e1cdc4b8a5a8c44932ab7"
     },
+    "apply-prd": {
+      "source": "arturoxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/apply-prd/SKILL.md",
+      "computedHash": "f2ce9afb11352a77b02049d0e4dcfe4a6e25e20dcd24fe741e83e82eaeafcc66"
+    },
+    "drizzle-migration": {
+      "source": "arturoxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/drizzle-migration/SKILL.md",
+      "computedHash": "d6122d68230d5fb99b089f9b2f44477b59f324db2c3339dc3b1ab5f63c31e3e4"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
