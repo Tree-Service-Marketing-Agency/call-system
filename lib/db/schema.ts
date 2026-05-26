@@ -70,6 +70,8 @@ export const companies = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     leadSnapWebhook: text("lead_snap_webhook"),
+    areaCode: text("area_code"),
+    retellPhoneNumber: text("retell_phone_number"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

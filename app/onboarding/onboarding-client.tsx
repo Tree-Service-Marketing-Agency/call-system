@@ -48,6 +48,7 @@ export function OnboardingClient() {
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   const [name, setName] = useState("");
+  const [areaCode, setAreaCode] = useState("");
   const [phones, setPhones] = useState<PhoneDraft[]>([EMPTY_PHONE]);
   const [leadSnap, setLeadSnap] = useState("");
   const [email, setEmail] = useState("");
@@ -62,6 +63,7 @@ export function OnboardingClient() {
 
   function resetForm() {
     setName("");
+    setAreaCode("");
     setPhones([EMPTY_PHONE]);
     setLeadSnap("");
     setEmail("");
@@ -75,6 +77,10 @@ export function OnboardingClient() {
 
     if (!name.trim()) {
       setError("Company name is required.");
+      return;
+    }
+    if (!/^[0-9]{3}$/.test(areaCode.trim())) {
+      setError("Area code must be exactly 3 digits.");
       return;
     }
     if (!email.trim()) {
@@ -116,6 +122,7 @@ export function OnboardingClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: name.trim(),
+        areaCode: areaCode.trim(),
         notificationPhones: normalized,
         leadSnapWebhook: leadSnap.trim() || null,
         userEmail: email.trim(),
@@ -225,6 +232,17 @@ export function OnboardingClient() {
               id="company-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="area-code">Area code</Label>
+            <Input
+              id="area-code"
+              value={areaCode}
+              onChange={(e) => setAreaCode(e.target.value)}
+              placeholder="415"
               required
             />
           </div>

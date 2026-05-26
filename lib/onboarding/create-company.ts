@@ -13,6 +13,7 @@ export class EmailAlreadyExistsError extends Error {
 
 export interface OnboardCompanyInput {
   name: string;
+  areaCode: string;
   notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
   userEmail: string;
@@ -44,6 +45,7 @@ export async function onboardCompany(
       .insert(companies)
       .values({
         name: input.name,
+        areaCode: input.areaCode,
         notificationPhones: input.notificationPhones,
         leadSnapWebhook: input.leadSnapWebhook,
       })

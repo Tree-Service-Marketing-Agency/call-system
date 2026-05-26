@@ -21,10 +21,13 @@ import { SettingsTab } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
 import { EditCompanyNameDialog } from "./edit-company-name-dialog";
+import { EditRetellPhoneDialog } from "./edit-retell-phone-dialog";
 
 interface CompanyDetail {
   id: string;
   name: string;
+  areaCode: string | null;
+  retellPhoneNumber: string | null;
   createdAt: string;
   notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
@@ -66,6 +69,7 @@ export function CompanyDetailClient({
 
   const [company, setCompany] = useState<CompanyDetail | null>(null);
   const [editNameOpen, setEditNameOpen] = useState(false);
+  const [editPhoneOpen, setEditPhoneOpen] = useState(false);
 
   const tabParam = searchParams.get("tab");
   const activeTab: TabValue = isTabValue(tabParam) ? tabParam : DEFAULT_TAB;
@@ -161,6 +165,26 @@ export function CompanyDetailClient({
                 <PencilIcon />
               </Button>
             </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={
+                  company.retellPhoneNumber
+                    ? "font-mono text-sm text-muted-foreground"
+                    : "text-sm text-muted-foreground/60"
+                }
+              >
+                {company.retellPhoneNumber ?? "Agregar número"}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Edit Retell phone number"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setEditPhoneOpen(true)}
+              >
+                <PencilIcon />
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
         </div>
@@ -170,6 +194,14 @@ export function CompanyDetailClient({
           onOpenChange={setEditNameOpen}
           companyId={company.id}
           currentName={company.name}
+          onSaved={fetchCompany}
+        />
+
+        <EditRetellPhoneDialog
+          open={editPhoneOpen}
+          onOpenChange={setEditPhoneOpen}
+          companyId={company.id}
+          currentValue={company.retellPhoneNumber}
           onSaved={fetchCompany}
         />
 
