@@ -17,19 +17,26 @@ import logo from "@/public/logo.svg";
 
 // ADR-009: public, unauthenticated page. Keep it out of search indexes.
 export const metadata: Metadata = {
-  title: "Grabación de llamada",
+  title: "Call recording",
   robots: { index: false, follow: false },
 };
 
-const dateFormatter = new Intl.DateTimeFormat("es-ES", {
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   month: "long",
   year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
 });
 
 function formatRecordingDate(callDate: string | null, createdAt: Date): string {
-  if (callDate && callDate.trim().length > 0) return callDate;
-  return dateFormatter.format(createdAt);
+  // callDate is a free-form text column (an ISO string when set by the
+  // webhook). Parse it so it renders human-readable; fall back to createdAt
+  // if it's missing or unparseable instead of showing the raw value.
+  const source =
+    callDate && callDate.trim().length > 0 ? new Date(callDate) : createdAt;
+  if (Number.isNaN(source.getTime())) return dateFormatter.format(createdAt);
+  return dateFormatter.format(source);
 }
 
 function UnavailableCard() {
@@ -46,10 +53,10 @@ function UnavailableCard() {
             priority
           />
           <CardTitle className="text-xl font-semibold tracking-tight">
-            Grabación de llamada
+            Call recording
           </CardTitle>
           <CardDescription>
-            Esta grabación no está disponible.
+            This recording is not available.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -99,7 +106,7 @@ export default async function AudioCallPage({
           />
           <div className="flex flex-col gap-1">
             <CardTitle className="text-xl font-semibold tracking-tight">
-              Grabación de llamada
+              Call recording
             </CardTitle>
             <CardDescription>
               {formatRecordingDate(call.callDate, call.createdAt)}
