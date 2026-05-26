@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { PlusIcon, XIcon } from "lucide-react";
 import type { UserRole } from "@/lib/auth-helpers";
+import { isValidAreaCode } from "@/lib/area-code";
 import {
   NOTE_MAX_LENGTH,
   coerceNotificationPhones,
@@ -36,6 +37,8 @@ import {
 interface CompanyForSettings {
   id: string;
   name: string;
+  areaCode: string | null;
+  retellPhoneNumber: string | null;
   notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
   agents: { id: string; agentId: string }[];
@@ -99,6 +102,16 @@ export function SettingsTab({
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [webhookError, setWebhookError] = useState<string | null>(null);
 
+  const [areaCodeDraft, setAreaCodeDraft] = useState(company.areaCode ?? "");
+  const [areaCodeSaving, setAreaCodeSaving] = useState(false);
+  const [areaCodeError, setAreaCodeError] = useState<string | null>(null);
+
+  const [retellPhoneDraft, setRetellPhoneDraft] = useState(
+    company.retellPhoneNumber ?? "",
+  );
+  const [retellPhoneSaving, setRetellPhoneSaving] = useState(false);
+  const [retellPhoneError, setRetellPhoneError] = useState<string | null>(null);
+
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -111,6 +124,8 @@ export function SettingsTab({
     [company.notificationPhones],
   );
   const currentWebhook = company.leadSnapWebhook ?? "";
+  const currentAreaCode = company.areaCode ?? "";
+  const currentRetellPhone = company.retellPhoneNumber ?? "";
 
   const cleanedAgents = agentsDraft.map((a) => a.trim()).filter(Boolean);
   const cleanedPhones: NotificationPhone[] = phonesDraft
@@ -122,9 +137,14 @@ export function SettingsTab({
     .filter((p) => p.phone.length > 0);
   const cleanedWebhook = webhookDraft.trim();
 
+  const cleanedAreaCode = areaCodeDraft.trim();
+  const cleanedRetellPhone = retellPhoneDraft.trim();
+
   const agentsDirty = !arraysEqual(cleanedAgents, currentAgentIds);
   const phonesDirty = !phonesEqual(cleanedPhones, currentPhones);
   const webhookDirty = cleanedWebhook !== currentWebhook;
+  const areaCodeDirty = cleanedAreaCode !== currentAreaCode;
+  const retellPhoneDirty = cleanedRetellPhone !== currentRetellPhone;
 
   async function patchCompany(body: Record<string, unknown>): Promise<{
     ok: boolean;
@@ -181,6 +201,36 @@ export function SettingsTab({
     setWebhookSaving(false);
     if (!ok) {
       setWebhookError(error ?? "Failed to save");
+      return;
+    }
+    onChanged();
+  }
+
+  async function saveAreaCode() {
+    if (!isValidAreaCode(cleanedAreaCode)) {
+      setAreaCodeError("Area code must be exactly 3 digits");
+      return;
+    }
+    setAreaCodeSaving(true);
+    setAreaCodeError(null);
+    const { ok, error } = await patchCompany({ areaCode: cleanedAreaCode });
+    setAreaCodeSaving(false);
+    if (!ok) {
+      setAreaCodeError(error ?? "Failed to save");
+      return;
+    }
+    onChanged();
+  }
+
+  async function saveRetellPhone() {
+    setRetellPhoneSaving(true);
+    setRetellPhoneError(null);
+    const { ok, error } = await patchCompany({
+      retellPhoneNumber: cleanedRetellPhone,
+    });
+    setRetellPhoneSaving(false);
+    if (!ok) {
+      setRetellPhoneError(error ?? "Failed to save");
       return;
     }
     onChanged();
@@ -388,6 +438,89 @@ export function SettingsTab({
                 </Button>
               </div>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Retell</CardTitle>
+          <CardDescription>
+            Area code and the Retell phone number for this company.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="area-code">Area code</Label>
+              <Input
+                id="area-code"
+                value={areaCodeDraft}
+                placeholder="415"
+                onChange={(e) => setAreaCodeDraft(e.target.value)}
+              />
+              {areaCodeError && (
+                <p className="text-sm text-destructive">{areaCodeError}</p>
+              )}
+              {areaCodeDirty && (
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={saveAreaCode}
+                    disabled={areaCodeSaving}
+                  >
+                    {areaCodeSaving ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAreaCodeDraft(currentAreaCode);
+                      setAreaCodeError(null);
+                    }}
+                    disabled={areaCodeSaving}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="retell-phone">Retell phone number</Label>
+              <Input
+                id="retell-phone"
+                value={retellPhoneDraft}
+                placeholder="+1 555 000 0000"
+                className="font-mono"
+                onChange={(e) => setRetellPhoneDraft(e.target.value)}
+              />
+              {retellPhoneError && (
+                <p className="text-sm text-destructive">{retellPhoneError}</p>
+              )}
+              {retellPhoneDirty && (
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={saveRetellPhone}
+                    disabled={retellPhoneSaving}
+                  >
+                    {retellPhoneSaving ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setRetellPhoneDraft(currentRetellPhone);
+                      setRetellPhoneError(null);
+                    }}
+                    disabled={retellPhoneSaving}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

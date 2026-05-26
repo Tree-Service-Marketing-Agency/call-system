@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth-helpers";
+import { isValidAreaCode } from "@/lib/area-code";
 import { validateNotificationPhones } from "@/lib/notification-phones";
 import {
   EmailAlreadyExistsError,
@@ -17,12 +18,14 @@ export async function POST(request: Request) {
 
   const {
     name,
+    areaCode,
     notificationPhones,
     leadSnapWebhook,
     userEmail,
     userPassword,
   } = body as {
     name?: unknown;
+    areaCode?: unknown;
     notificationPhones?: unknown;
     leadSnapWebhook?: unknown;
     userEmail?: unknown;
@@ -31,6 +34,12 @@ export async function POST(request: Request) {
 
   if (typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
+  }
+  if (typeof areaCode !== "string" || !isValidAreaCode(areaCode.trim())) {
+    return NextResponse.json(
+      { error: "area code must be 3 digits" },
+      { status: 400 }
+    );
   }
   if (typeof userEmail !== "string" || userEmail.trim().length === 0) {
     return NextResponse.json(
@@ -67,6 +76,7 @@ export async function POST(request: Request) {
   try {
     const { company, user } = await onboardCompany({
       name: name.trim(),
+      areaCode: areaCode.trim(),
       notificationPhones: validatedPhones.value,
       leadSnapWebhook: cleanedLeadSnap,
       userEmail: userEmail.trim(),

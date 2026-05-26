@@ -9,7 +9,9 @@ import {
   users,
 } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
+import { isValidAreaCode } from "@/lib/area-code";
 import { validateNotificationPhones } from "@/lib/notification-phones";
+import { normalizeUsPhone } from "@/lib/phone";
 
 export async function GET(
   _request: Request,
@@ -75,6 +77,8 @@ export async function PATCH(
 
   const body = (await request.json().catch(() => ({}))) as {
     name?: unknown;
+    areaCode?: unknown;
+    retellPhoneNumber?: unknown;
     notificationPhones?: unknown;
     leadSnapWebhook?: unknown;
     agentIds?: unknown;
@@ -97,6 +101,51 @@ export async function PATCH(
       );
     }
     companyUpdates.name = trimmed;
+  }
+
+  if ("areaCode" in body) {
+    if (typeof body.areaCode !== "string") {
+      return NextResponse.json(
+        { error: "area code must be a string" },
+        { status: 400 }
+      );
+    }
+    const trimmed = body.areaCode.trim();
+    if (trimmed.length === 0) {
+      return NextResponse.json(
+        { error: "area code cannot be empty" },
+        { status: 400 }
+      );
+    }
+    if (!isValidAreaCode(trimmed)) {
+      return NextResponse.json(
+        { error: "area code must be 3 digits" },
+        { status: 400 }
+      );
+    }
+    companyUpdates.areaCode = trimmed;
+  }
+
+  if ("retellPhoneNumber" in body) {
+    if (typeof body.retellPhoneNumber !== "string") {
+      return NextResponse.json(
+        { error: "retellPhoneNumber must be a string" },
+        { status: 400 }
+      );
+    }
+    const trimmed = body.retellPhoneNumber.trim();
+    if (trimmed.length === 0) {
+      companyUpdates.retellPhoneNumber = null;
+    } else {
+      const normalized = normalizeUsPhone(trimmed);
+      if (normalized === null) {
+        return NextResponse.json(
+          { error: "invalid phone number" },
+          { status: 400 }
+        );
+      }
+      companyUpdates.retellPhoneNumber = normalized;
+    }
   }
 
   if ("notificationPhones" in body) {
