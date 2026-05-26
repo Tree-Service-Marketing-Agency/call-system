@@ -44,6 +44,7 @@ export function InlineAudioPlayer({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const wasPlayingRef = useRef(false);
+  const resolvingDurationRef = useRef(false);
 
   useMountEffect(() => {
     const audio = audioRef.current;
@@ -64,6 +65,34 @@ export function InlineAudioPlayer({
     } else {
       void audio.play();
       setIsPlaying(true);
+    }
+  }
+
+  function handleLoadedMetadata(e: React.SyntheticEvent<HTMLAudioElement>) {
+    const audio = e.currentTarget;
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      setDuration(audio.duration);
+      return;
+    }
+    // Streamed recordings often report duration === Infinity until the file
+    // is fully scanned. Force the browser to compute it by seeking past the
+    // end; the resulting durationchange yields the real value, then we rewind.
+    resolvingDurationRef.current = true;
+    try {
+      audio.currentTime = 1e101;
+    } catch {
+      resolvingDurationRef.current = false;
+    }
+  }
+
+  function handleDurationChange(e: React.SyntheticEvent<HTMLAudioElement>) {
+    const audio = e.currentTarget;
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    setDuration(audio.duration);
+    if (resolvingDurationRef.current) {
+      resolvingDurationRef.current = false;
+      audio.currentTime = 0;
+      setCurrentTime(0);
     }
   }
 
@@ -124,8 +153,10 @@ export function InlineAudioPlayer({
         ref={audioRef}
         src={src}
         preload="metadata"
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onLoadedMetadata={handleLoadedMetadata}
+        onDurationChange={handleDurationChange}
         onTimeUpdate={(e) => {
+          if (resolvingDurationRef.current) return;
           if (!isScrubbing) setCurrentTime(e.currentTarget.currentTime);
         }}
         onEnded={() => {
