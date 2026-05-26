@@ -34,6 +34,14 @@ _Avoid_: "ver password actual", "consultar password".
 Una conversación entre un cliente final y un Retell voice agent, registrada en la tabla `calls`. Se llena en una sola fase: el webhook `call_ended`, que llega cuando termina la llamada con **todos** los datos (cliente + audio + duración + costo + transcript). El webhook `call_data` fue deprecado y eliminado (ver ADR-006).
 _Avoid_: "registro", "interacción", "webhook de Encode" (alias informal del webhook `call_ended`; usar el nombre real).
 
+**Recording**:
+El audio de una **Call**, guardado como URL de Retell en `calls.audio_url`. Se considera **expirada** 30 días después de `calls.created_at` (regla del sistema; la propia URL de Retell también deja de servir pasado ese tiempo). Una **Call** puede no tener **Recording** (`audio_url` nulo).
+_Avoid_: "grabación permanente" (expira), "el audio de Encode".
+
+**Public recording link**:
+La página pública y sin password `/audio-call/<id>` cuya única función es reproducir la **Recording** de una **Call** con el mismo reproductor del detalle (`InlineAudioPlayer`). `<id>` es el `calls.id` interno (UUID), **no** el `callId` de Retell. El servidor resuelve la **Call** y renderiza; el UUID actúa como llave (quien tiene el link escucha el audio). No muestra PII en texto ni billing/costo/transcript, es `noindex`, y reusa la regla de expiración de 30 días de la **Recording**. Ver ADR-009.
+_Avoid_: "página de audio" (ambiguo), "compartir la llamada" (se confunde con el detalle interno autenticado).
+
 ### Estados de billing de una Call
 
 Tres valores derivados que se muestran como badges en la columna **Billing** de `/calls`. Se computan desde `billing_ledger.status` y `calls.invoiceId`; no se almacenan como columna explícita. Una **Call** sin **Ledger entry** no muestra badge — la celda queda como `—`. (El cuarto estado, **Partial**, fue eliminado junto con `call_data`; ver ADR-006.)
@@ -94,9 +102,21 @@ _Avoid_: "comentario", "descripción", "label".
 Booleano por número; `true` = n8n no debe notificar a ese número. Default `false`. Este sistema solo almacena y expone el flag; el filtrado ocurre en n8n. Un número `disabled` igual debe tener un `phone` válido.
 _Avoid_: "isDisabled" (uso informal del campo), "enabled" (polaridad invertida), "inactive".
 
+### Teléfono de Retell
+
+**Retell phone number**:
+El número con el que la compañía está dada de alta en Retell — el que su voice agent usa para hacer/recibir llamadas. Se almacena en `companies.retell_phone_number` (`text`, nullable), normalizado a E.164 US (`+1XXXXXXXXXX`) reusando `normalizeUsPhone()`. Único por compañía. **No** participa en onboarding: nace `null` y se llena después. Este sistema solo lo almacena y expone; la compra/aprovisionamiento real del número ocurre fuera (Retell dashboard / n8n), igual que el **Area code**. Editable de dos formas equivalentes que escriben la misma columna vía `PATCH /api/companies/[id]`: inline en el header del detalle de compañía (igual que el nombre) y como campo en Settings.
+_Avoid_: "Notification phone" (ese recibe alertas de lead, no es el número del agente), "phone number" a secas, "company phone", "agent phone" (se confunde con `agentId`).
+
+**Area code**:
+Código de área US de 3 dígitos (NANP, ej. `415`, `786`) que indica **dónde** debe comprarse el **Retell phone number** de la compañía. Se almacena en `companies.area_code` (`text`, nullable a nivel DB para no romper compañías previas al campo, que quedan en `null`), validado como exactamente 3 dígitos (`/^[0-9]{3}$/`). Descriptivo: el sistema no compra nada, solo registra dónde localizar la compra. La obligatoriedad vive en la aplicación, no en la columna: onboarding siempre lo exige (única vía de captura inicial) y el `PATCH` de Settings rechaza vaciarlo al editar. Editable después solo desde Settings — nunca desde el header.
+_Avoid_: "prefijo", "código de ciudad", "lada".
+
 ## Relationships
 
 - Una **Call** tiene cero o una **Ledger entry** (`UNIQUE(call_id, entry_type)` en `billing_ledger`).
+- Una **Call** tiene cero o una **Recording**; el **Public recording link** resuelve la **Call** por `calls.id` y solo reproduce su **Recording** (nada más del payload de la **Call** llega al navegador).
+- El webhook `call_ended` devuelve en su respuesta `{ id, url }` — el **Public recording link** ya armado — para que n8n lo distribuya. Se emite para toda **Call** registrada, sin importar su estado de billing (`pending`, `void` o sin ledger). Ver ADR-009.
 - Sólo las **Calls** con `disconnection_reason ∈ {'user_hangup', 'agent_hangup'}` (ver `lib/billing/rules.ts`) **y** compañía resuelta producen **Ledger entries**.
 - Precedencia al ingerir (ADR-007): `disconnection` no-billable → sin ledger, celda `—`. Sin compañía → sin ledger, celda `—`. Duración `< ` **Minimum billable duration** → **Ledger entry** insertada **directamente** en `void` (balance intacto, `billing_counted_at = null`), badge **Marked non-billable**. En otro caso → `pending`.
 - Transiciones legales del status del ledger:
@@ -105,6 +125,7 @@ _Avoid_: "isDisabled" (uso informal del campo), "enabled" (polaridad invertida),
 - Una entry en `void` no puede llegar a `reserved` ni a `paid` sin pasar primero por `pending` vía **Restore**.
 - El cron dispara cobro cuando **Pending calls count** ≥ **Billing threshold**. El **Pending balance** define el monto del **Invoice**, no el trigger. **Void** y **Restore** modifican ambos (count y balance) al cambiar el status del ledger.
 - Una **Company** tiene cero o más **Notification phones** en `companies.notification_phones`. La API externa `by-agent` los expone **todos**, incluidos los **Disabled**; n8n decide a quién notifica filtrando por `disabled`.
+- Una **Company** tiene a lo sumo un **Retell phone number** (`companies.retell_phone_number`, nullable) y un **Area code** (`companies.area_code`). El **Area code** se captura obligatorio en onboarding; el **Retell phone number** no entra en onboarding y se llena después. Ninguno dispara llamadas a Retell — son descriptivos, como los **Notification phones**.
 - Un **Password reset** cambia la contraseña que se usará en próximos logins, pero no revoca sesiones activas en esta iteración.
 - Un **Password reset** ejecutado por `root`, incluso sobre su propia cuenta, no requiere capturar la contraseña actual; se confirma la generación de una **Temporary password**.
 
@@ -126,3 +147,5 @@ _Avoid_: "isDisabled" (uso informal del campo), "enabled" (polaridad invertida),
 - **"Threshold"** originalmente era un monto en dólares (`billing_threshold_cents`); ahora es un conteo de llamadas (`billing_threshold_calls`, default 25). El `current_balance_cents` ya no participa en el trigger — sólo determina el monto del **Invoice** una vez que el conteo dispara el cobro. Ver ADR-005.
 - **"comentario" / "descripción" / "label"** se usaban indistintamente para el texto libre de un **Notification phone** — resuelto: el término es **Note**, máximo 150 caracteres, opcional.
 - **"isDisabled" / "enabled"** para el estado de un **Notification phone** — resuelto: el campo es **Disabled** (booleano, default `false`, `true` = no notificar). Se descartó polaridad positiva para no invertir el enunciado en n8n.
+- **"call_id"** en la URL `/audio-call/<call_id>` era ambiguo entre el `calls.id` interno (UUID) y el `callId` de Retell (`call_…`, único solo junto con `agentId`). Resuelto: el **Public recording link** usa el **`id` interno (UUID)** — es la clave que ya usa `/api/calls/[id]`, garantiza unicidad y es imposible de adivinar (requisito al ser link-llave público). Ver ADR-009.
+- **"Phone number"** era ambiguo entre el número que recibe alertas de lead (**Notification phone**, array `notification_phones`) y el número del agente en Retell. Resuelto: el número del agente es **Retell phone number** (columna única `retell_phone_number`, nullable); los de alertas siguen siendo **Notification phones**. Conceptos distintos, columnas distintas, no se mezclan.
