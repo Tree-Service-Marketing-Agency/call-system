@@ -37,12 +37,14 @@ import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { isAudioExpired } from "@/lib/recording";
 import { InlineAudioPlayer } from "@/components/calls/inline-audio-player";
+import { CallTranscript } from "@/components/calls/call-transcript";
 import {
   billingStateBadgeVariant,
   formatCents,
   type BillingState,
   type LedgerStatus,
 } from "@/lib/billing/state";
+import type { TranscriptTurn } from "@/lib/db/schema";
 
 interface CallDetail {
   id: string;
@@ -62,6 +64,7 @@ interface CallDetail {
   companyId: string | null;
   companyName: string | null;
   createdAt: string;
+  transcript: TranscriptTurn[] | null;
   // ADR-003: only present for root/admin (gated server-side).
   retellCost?: string | null;
   billing: {
@@ -373,6 +376,7 @@ function CallDetailContent({
               <div className="border-b border-border px-6 pt-3">
                 <TabsList variant="line">
                   <TabsTrigger value="call">Call</TabsTrigger>
+                  <TabsTrigger value="transcript">Transcript</TabsTrigger>
                   <TabsTrigger value="billing">Billing</TabsTrigger>
                 </TabsList>
               </div>
@@ -402,6 +406,13 @@ function CallDetailContent({
                   />
                   <DetailField label="Summary" value={call.summary} full />
                 </div>
+              </TabsContent>
+
+              <TabsContent
+                value="transcript"
+                className="flex flex-1 flex-col overflow-hidden"
+              >
+                <CallTranscript transcript={call.transcript} />
               </TabsContent>
 
               <TabsContent
