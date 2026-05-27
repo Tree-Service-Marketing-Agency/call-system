@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 
+import { toast } from "sonner";
+
 import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   CalendarIcon,
   ClockIcon,
+  CopyIcon,
   DownloadIcon,
   ExternalLinkIcon,
 } from "lucide-react";
@@ -148,6 +151,36 @@ function DetailField({
       >
         {empty ? "—" : value}
       </span>
+    </div>
+  );
+}
+
+function CopyableId({ label, value }: { label: string; value: string }) {
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied to clipboard`);
+    } catch {
+      toast.error("Could not copy. Select and copy manually.");
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <span className="shrink-0">{label}</span>
+      <span className="min-w-0 break-all font-mono text-muted-foreground-2">
+        {value}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={copy}
+        aria-label={`Copy ${label}`}
+        className="shrink-0"
+      >
+        <CopyIcon />
+      </Button>
     </div>
   );
 }
@@ -314,8 +347,9 @@ function CallDetailContent({
                   </div>
                 </div>
               </div>
-              <div className="font-mono text-[11px] text-muted-foreground-2">
-                {call.callId}
+              <div className="flex flex-col gap-1">
+                <CopyableId label="Internal ID" value={call.id} />
+                <CopyableId label="Retell ID" value={call.callId} />
               </div>
             </div>
 
