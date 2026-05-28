@@ -18,6 +18,7 @@ import { DataTablePagination } from "@/components/dashboard/data-table-paginatio
 import { CompanyFilter } from "@/components/company-filter";
 import { CustomerCallsExpanded } from "./customer-calls-expanded";
 import type { SessionUser } from "@/lib/auth-helpers";
+import { formatUsPhone } from "@/lib/phone";
 
 interface CustomerRow {
   customerPhone: string;
@@ -144,7 +145,7 @@ export function CustomersClient({ user }: { user: SessionUser }) {
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-[12.5px] text-muted-foreground">
-                        {customer.customerPhone}
+                        {formatUsPhone(customer.customerPhone)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {customer.customerAddress ?? "—"}

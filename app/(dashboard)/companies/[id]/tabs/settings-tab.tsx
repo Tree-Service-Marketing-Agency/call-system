@@ -345,7 +345,7 @@ export function SettingsTab({
                 <div className="flex gap-2">
                   <Input
                     value={entry.phone}
-                    placeholder="+1 555 000 0000"
+                    placeholder="+1(716)671-1980"
                     onChange={(e) => {
                       const next = [...phonesDraft];
                       next[index] = { ...next[index], phone: e.target.value };
@@ -491,7 +491,7 @@ export function SettingsTab({
               <Input
                 id="retell-phone"
                 value={retellPhoneDraft}
-                placeholder="+1 555 000 0000"
+                placeholder="+1(716)671-1980"
                 className="font-mono"
                 onChange={(e) => setRetellPhoneDraft(e.target.value)}
               />

@@ -52,8 +52,7 @@ export async function GET(request: NextRequest) {
       id: companies.id,
       name: companies.name,
       createdAt: companies.createdAt,
-      agentCount: sql<number>`(SELECT COUNT(*) FROM company_agents WHERE company_agents.company_id = ${companies.id})`.as("agent_count"),
-      userCount: sql<number>`(SELECT COUNT(*) FROM users WHERE users.company_id = ${companies.id})`.as("user_count"),
+      retellPhoneNumber: companies.retellPhoneNumber,
       monthlyBillingCents: sql<number>`COALESCE((SELECT SUM(amount_cents) FROM billing_ledger WHERE billing_ledger.company_id = ${companies.id} AND billing_ledger.created_at >= ${startOfMonth}), 0)`.as("monthly_billing_cents"),
     })
     .from(companies)

@@ -30,6 +30,7 @@ import {
 import { CompanyFilter } from "@/components/company-filter";
 import { CallDetailSheet } from "./call-detail-sheet";
 import type { SessionUser } from "@/lib/auth-helpers";
+import { formatUsPhone } from "@/lib/phone";
 import {
   billingStateBadgeVariant,
   deriveBillingState,
@@ -411,7 +412,7 @@ export function CallsClient({
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-[12.5px] text-muted-foreground">
-                        {call.customerPhone ?? "—"}
+                        {call.customerPhone ? formatUsPhone(call.customerPhone) : "—"}
                       </TableCell>
                       <TableCell>{statusBadge(call.callStatus)}</TableCell>
                       {showBillingColumn && (

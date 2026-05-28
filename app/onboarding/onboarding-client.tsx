@@ -597,7 +597,7 @@ function PhoneRow({
           type="tel"
           value={phone.phone}
           onChange={(e) => onChange("phone", e.target.value)}
-          placeholder="+1(555)555-5555"
+          placeholder="+1(716)671-1980"
           className="h-full border-0 bg-transparent font-mono text-[12.5px] shadow-none focus-visible:ring-0"
           autoComplete="off"
         />

@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { isAudioExpired } from "@/lib/recording";
+import { formatUsPhone } from "@/lib/phone";
 import { InlineAudioPlayer } from "@/components/calls/inline-audio-player";
 import { CallTranscript } from "@/components/calls/call-transcript";
 import {
@@ -317,7 +318,7 @@ function CallDetailContent({
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                     {call.customerPhone && (
-                      <span className="font-mono">{call.customerPhone}</span>
+                      <span className="font-mono">{formatUsPhone(call.customerPhone)}</span>
                     )}
                     {call.customerPhone && call.companyName && (
                       <span className="text-muted-foreground-2">·</span>
@@ -387,7 +388,11 @@ function CallDetailContent({
               >
                 <div className="grid grid-cols-2 gap-x-5 gap-y-5">
                   <DetailField label="Customer" value={call.customerName} />
-                  <DetailField label="Phone" value={call.customerPhone} mono />
+                  <DetailField
+                    label="Phone"
+                    value={formatUsPhone(call.customerPhone)}
+                    mono
+                  />
                   <DetailField label="Address" value={call.customerAddress} />
                   <DetailField label="City" value={call.customerCity} />
                   <DetailField

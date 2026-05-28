@@ -95,7 +95,7 @@ function EditRetellPhoneForm({
           id="retell-phone-edit"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="+1 555 000 0000"
+          placeholder="+1(716)671-1980"
           className="font-mono"
           autoFocus
         />
