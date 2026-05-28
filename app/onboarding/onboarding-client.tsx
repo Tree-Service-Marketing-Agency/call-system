@@ -266,7 +266,7 @@ export function OnboardingClient() {
                       };
                       setPhones(updated);
                     }}
-                    placeholder="(555) 123-4567"
+                    placeholder="+1(716)671-1980"
                   />
                   {phones.length > 1 && (
                     <Button
