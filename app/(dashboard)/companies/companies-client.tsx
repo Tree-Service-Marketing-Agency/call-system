@@ -19,13 +19,13 @@ import { PageHeader } from "@/components/layout/page-header";
 import { PageBody } from "@/components/layout/page-body";
 import { FilterBar } from "@/components/dashboard/filter-bar";
 import { DataTablePagination } from "@/components/dashboard/data-table-pagination";
+import { formatUsPhone } from "@/lib/phone";
 import { CreateCompanyDialog } from "./create-company-dialog";
 
 interface CompanyRow {
   id: string;
   name: string;
-  agentCount: number;
-  userCount: number;
+  retellPhoneNumber: string | null;
   monthlyBillingCents: number;
 }
 
@@ -129,8 +129,7 @@ export function CompaniesClient() {
             <TableHeader>
               <TableRow>
                 <TableHead>Company</TableHead>
-                <TableHead className="text-right">Agents</TableHead>
-                <TableHead className="text-right">Users</TableHead>
+                <TableHead>Retell number</TableHead>
                 <TableHead className="text-right">Billing this month</TableHead>
               </TableRow>
             </TableHeader>
@@ -138,7 +137,7 @@ export function CompaniesClient() {
               {companies.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={3}
                     className="h-32 text-center text-sm text-muted-foreground"
                   >
                     No companies yet
@@ -157,11 +156,12 @@ export function CompaniesClient() {
                         <span>{company.name}</span>
                       </span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {company.agentCount}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {company.userCount}
+                    <TableCell className="tabular-nums">
+                      {company.retellPhoneNumber ? (
+                        <span>{formatUsPhone(company.retellPhoneNumber)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Not assigned</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       ${(Number(company.monthlyBillingCents ?? 0) / 100).toFixed(2)}

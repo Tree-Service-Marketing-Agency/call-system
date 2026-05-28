@@ -17,6 +17,7 @@ import { PageBody } from "@/components/layout/page-body";
 import { CallsClient } from "@/app/(dashboard)/calls/calls-client";
 import type { SessionUser } from "@/lib/auth-helpers";
 import type { NotificationPhone } from "@/lib/notification-phones";
+import { formatUsPhone } from "@/lib/phone";
 import { SettingsTab } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
@@ -173,7 +174,9 @@ export function CompanyDetailClient({
                     : "text-sm text-muted-foreground/60"
                 }
               >
-                {company.retellPhoneNumber ?? "Agregar número"}
+                {company.retellPhoneNumber
+                  ? formatUsPhone(company.retellPhoneNumber)
+                  : "Add number"}
               </span>
               <Button
                 variant="ghost"
