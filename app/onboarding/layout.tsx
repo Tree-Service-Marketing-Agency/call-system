@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ChevronRightIcon } from "lucide-react";
 import { auth } from "@/lib/auth";
 
 export default async function OnboardingLayout({
@@ -17,18 +19,37 @@ export default async function OnboardingLayout({
     redirect("/");
   }
 
+  const userEmail = (session.user as { email?: string | null }).email ?? "";
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="flex h-14 items-center border-b border-border px-6">
-        <div className="flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Lola" className="size-6" />
-          <span className="text-lg font-semibold">Lola</span>
-        </div>
+      <header className="flex h-12 items-center justify-between border-b border-border bg-sidebar px-6">
+        <nav
+          aria-label="Breadcrumb"
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 font-medium text-foreground"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="" className="size-4" />
+            Lola
+          </Link>
+          <ChevronRightIcon className="size-3.5 text-muted-foreground/60" />
+          <Link href="/companies" className="hover:text-foreground">
+            Companies
+          </Link>
+          <ChevronRightIcon className="size-3.5 text-muted-foreground/60" />
+          <span className="text-foreground">New company</span>
+        </nav>
+        {userEmail && (
+          <span className="text-xs font-medium text-muted-foreground">
+            {userEmail}
+          </span>
+        )}
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 py-10">
-        {children}
-      </main>
+      <main className="flex-1">{children}</main>
     </div>
   );
 }
