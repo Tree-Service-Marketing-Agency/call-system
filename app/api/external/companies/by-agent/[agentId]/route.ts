@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, companyAgents } from "@/lib/db/schema";
+import { companies, retellNumbers } from "@/lib/db/schema";
 
 export async function GET(
   request: Request,
@@ -28,8 +28,8 @@ export async function GET(
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
 
-  const mapping = await db.query.companyAgents.findFirst({
-    where: eq(companyAgents.agentId, agentId),
+  const mapping = await db.query.retellNumbers.findFirst({
+    where: eq(retellNumbers.agentId, agentId),
   });
   if (!mapping) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
@@ -37,7 +37,7 @@ export async function GET(
 
   const company = await db.query.companies.findFirst({
     where: eq(companies.id, mapping.companyId),
-    with: { agents: true, users: true },
+    with: { retellNumbers: true, users: true },
   });
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
@@ -59,10 +59,12 @@ export async function GET(
       currentBalanceCents: company.currentBalanceCents,
     },
     createdAt: company.createdAt,
-    agents: company.agents.map((a) => ({
-      id: a.id,
-      agentId: a.agentId,
-      companyId: a.companyId,
+    // External contract unchanged (n8n): same `{ id, agentId, companyId }`
+    // shape, now sourced from retell_numbers instead of company_agents.
+    agents: company.retellNumbers.map((n) => ({
+      id: n.id,
+      agentId: n.agentId,
+      companyId: n.companyId,
     })),
     users: company.users.map((u) => ({
       id: u.id,
