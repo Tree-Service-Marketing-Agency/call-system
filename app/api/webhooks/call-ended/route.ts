@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { calls, companyAgents, companies } from "@/lib/db/schema";
+import { calls, retellNumbers, companies } from "@/lib/db/schema";
 import {
   insertCallChargeLedgerEntry,
   insertVoidedCallChargeLedgerEntry,
@@ -55,8 +55,8 @@ export async function POST(request: Request) {
 
   const mapped = mapCallEndedPayload(callObj);
 
-  const agent = await db.query.companyAgents.findFirst({
-    where: eq(companyAgents.agentId, agent_id),
+  const agent = await db.query.retellNumbers.findFirst({
+    where: eq(retellNumbers.agentId, agent_id),
   });
   const companyId = agent?.companyId ?? null;
 

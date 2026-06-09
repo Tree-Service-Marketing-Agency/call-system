@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ilike, sql } from "drizzle-orm";
+import { ilike, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, companyAgents } from "@/lib/db/schema";
+import { companies, retellNumbers } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
+import { deriveRetellStatus } from "@/lib/retell-numbers";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
@@ -60,7 +61,31 @@ export async function GET(request: NextRequest) {
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
-  const data = where ? await dataQuery.where(where) : await dataQuery;
+  const rows = where ? await dataQuery.where(where) : await dataQuery;
+
+  // One extra query for the whole page (no N+1): pull every enabled flag
+  // for the page's companies and aggregate in memory.
+  const companyIds = rows.map((r) => r.id);
+  const flagsByCompany = new Map<string, boolean[]>();
+  if (companyIds.length > 0) {
+    const numberRows = await db
+      .select({
+        companyId: retellNumbers.companyId,
+        enabled: retellNumbers.enabled,
+      })
+      .from(retellNumbers)
+      .where(inArray(retellNumbers.companyId, companyIds));
+    for (const row of numberRows) {
+      const flags = flagsByCompany.get(row.companyId) ?? [];
+      flags.push(row.enabled);
+      flagsByCompany.set(row.companyId, flags);
+    }
+  }
+
+  const data = rows.map((row) => ({
+    ...row,
+    retellStatus: deriveRetellStatus(flagsByCompany.get(row.id) ?? []),
+  }));
 
   return NextResponse.json({ data, total, page, pageSize });
 }
@@ -74,21 +99,63 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { name, agentIds } = body;
 
-  if (!name || !agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
-    return NextResponse.json(
-      { error: "name and agentIds are required" },
-      { status: 400 }
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  }
+
+  // agentIds is optional since phase 2 (PRD #41): companies can be created
+  // without agents. When provided (current dialog), each id becomes a
+  // retell_numbers row with no phone yet.
+  let normalizedAgentIds: string[] = [];
+  if (agentIds !== undefined && agentIds !== null) {
+    if (
+      !Array.isArray(agentIds) ||
+      !agentIds.every((a) => typeof a === "string")
+    ) {
+      return NextResponse.json(
+        { error: "agentIds must be an array of strings" },
+        { status: 400 }
+      );
+    }
+    normalizedAgentIds = Array.from(
+      new Set(agentIds.map((a) => a.trim()).filter((a) => a.length > 0))
     );
   }
 
-  const [company] = await db.insert(companies).values({ name }).returning();
+  if (normalizedAgentIds.length > 0) {
+    const conflicting = await db
+      .select({ agentId: retellNumbers.agentId })
+      .from(retellNumbers)
+      .where(inArray(retellNumbers.agentId, normalizedAgentIds));
+    if (conflicting.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Agent IDs already assigned to another company: ${conflicting
+            .map((c) => c.agentId)
+            .join(", ")}`,
+        },
+        { status: 409 }
+      );
+    }
+  }
 
-  await db.insert(companyAgents).values(
-    agentIds.map((agentId: string) => ({
-      companyId: company.id,
-      agentId,
-    }))
-  );
+  const company = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(companies)
+      .values({ name: name.trim() })
+      .returning();
+
+    if (normalizedAgentIds.length > 0) {
+      await tx.insert(retellNumbers).values(
+        normalizedAgentIds.map((agentId) => ({
+          companyId: created.id,
+          agentId,
+        }))
+      );
+    }
+
+    return created;
+  });
 
   return NextResponse.json(company, { status: 201 });
 }
