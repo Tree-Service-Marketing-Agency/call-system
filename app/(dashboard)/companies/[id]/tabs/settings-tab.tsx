@@ -25,31 +25,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusIcon, XIcon } from "lucide-react";
+import { PencilIcon, PlusIcon, XIcon } from "lucide-react";
 import type { UserRole } from "@/lib/auth-helpers";
 import { isValidAreaCode } from "@/lib/area-code";
+import { canToggleRetellNumber } from "@/lib/retell-numbers";
+import { formatUsPhone } from "@/lib/phone";
 import {
   NOTE_MAX_LENGTH,
   coerceNotificationPhones,
   type NotificationPhone,
 } from "@/lib/notification-phones";
 
+export interface RetellNumberRow {
+  id: string;
+  agentId: string;
+  phoneNumber: string | null;
+  enabled: boolean;
+}
+
 interface CompanyForSettings {
   id: string;
   name: string;
   areaCode: string | null;
-  retellPhoneNumber: string | null;
   notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
-  agents: { id: string; agentId: string }[];
-}
-
-function arraysEqual(a: string[], b: string[]) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
+  retellNumbers: RetellNumberRow[];
 }
 
 function phonesEqual(a: NotificationPhone[], b: NotificationPhone[]) {
@@ -83,12 +83,6 @@ export function SettingsTab({
 }) {
   const router = useRouter();
 
-  const [agentsDraft, setAgentsDraft] = useState<string[]>(
-    company.agents.length > 0 ? company.agents.map((a) => a.agentId) : [""],
-  );
-  const [agentsSaving, setAgentsSaving] = useState(false);
-  const [agentsError, setAgentsError] = useState<string | null>(null);
-
   const [phonesDraft, setPhonesDraft] = useState<NotificationPhone[]>(() => {
     const coerced = coerceNotificationPhones(company.notificationPhones);
     return coerced.length > 0 ? coerced : [EMPTY_PHONE];
@@ -106,28 +100,16 @@ export function SettingsTab({
   const [areaCodeSaving, setAreaCodeSaving] = useState(false);
   const [areaCodeError, setAreaCodeError] = useState<string | null>(null);
 
-  const [retellPhoneDraft, setRetellPhoneDraft] = useState(
-    company.retellPhoneNumber ?? "",
-  );
-  const [retellPhoneSaving, setRetellPhoneSaving] = useState(false);
-  const [retellPhoneError, setRetellPhoneError] = useState<string | null>(null);
-
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const currentAgentIds = useMemo(
-    () => company.agents.map((a) => a.agentId),
-    [company.agents],
-  );
   const currentPhones = useMemo(
     () => coerceNotificationPhones(company.notificationPhones),
     [company.notificationPhones],
   );
   const currentWebhook = company.leadSnapWebhook ?? "";
   const currentAreaCode = company.areaCode ?? "";
-  const currentRetellPhone = company.retellPhoneNumber ?? "";
 
-  const cleanedAgents = agentsDraft.map((a) => a.trim()).filter(Boolean);
   const cleanedPhones: NotificationPhone[] = phonesDraft
     .map((p) => ({
       phone: p.phone.trim(),
@@ -136,15 +118,11 @@ export function SettingsTab({
     }))
     .filter((p) => p.phone.length > 0);
   const cleanedWebhook = webhookDraft.trim();
-
   const cleanedAreaCode = areaCodeDraft.trim();
-  const cleanedRetellPhone = retellPhoneDraft.trim();
 
-  const agentsDirty = !arraysEqual(cleanedAgents, currentAgentIds);
   const phonesDirty = !phonesEqual(cleanedPhones, currentPhones);
   const webhookDirty = cleanedWebhook !== currentWebhook;
   const areaCodeDirty = cleanedAreaCode !== currentAreaCode;
-  const retellPhoneDirty = cleanedRetellPhone !== currentRetellPhone;
 
   async function patchCompany(body: Record<string, unknown>): Promise<{
     ok: boolean;
@@ -160,22 +138,6 @@ export function SettingsTab({
       return { ok: false, error: data?.error ?? "Failed to save" };
     }
     return { ok: true };
-  }
-
-  async function saveAgents() {
-    if (cleanedAgents.length === 0) {
-      setAgentsError("At least one agent ID is required");
-      return;
-    }
-    setAgentsSaving(true);
-    setAgentsError(null);
-    const { ok, error } = await patchCompany({ agentIds: cleanedAgents });
-    setAgentsSaving(false);
-    if (!ok) {
-      setAgentsError(error ?? "Failed to save");
-      return;
-    }
-    onChanged();
   }
 
   async function savePhones() {
@@ -222,20 +184,6 @@ export function SettingsTab({
     onChanged();
   }
 
-  async function saveRetellPhone() {
-    setRetellPhoneSaving(true);
-    setRetellPhoneError(null);
-    const { ok, error } = await patchCompany({
-      retellPhoneNumber: cleanedRetellPhone,
-    });
-    setRetellPhoneSaving(false);
-    if (!ok) {
-      setRetellPhoneError(error ?? "Failed to save");
-      return;
-    }
-    onChanged();
-  }
-
   async function deleteCompany() {
     setDeleting(true);
     setDeleteError(null);
@@ -254,79 +202,12 @@ export function SettingsTab({
 
   return (
     <div className="flex flex-col gap-5">
-      <Card>
-        <CardHeader>
-          <CardTitle>Agents</CardTitle>
-          <CardDescription>
-            Agent IDs assigned to this company.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-2">
-            {agentsDraft.map((agentId, index) => (
-              <div key={index} className="flex gap-2">
-                <Input
-                  value={agentId}
-                  placeholder="agent_..."
-                  onChange={(e) => {
-                    const next = [...agentsDraft];
-                    next[index] = e.target.value;
-                    setAgentsDraft(next);
-                  }}
-                />
-                {agentsDraft.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Remove agent"
-                    onClick={() =>
-                      setAgentsDraft(
-                        agentsDraft.filter((_, i) => i !== index),
-                      )
-                    }
-                  >
-                    <XIcon />
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-fit"
-              onClick={() => setAgentsDraft([...agentsDraft, ""])}
-            >
-              <PlusIcon data-icon="inline-start" />
-              Add agent
-            </Button>
-            {agentsError && (
-              <p className="text-sm text-destructive">{agentsError}</p>
-            )}
-            {agentsDirty && (
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" onClick={saveAgents} disabled={agentsSaving}>
-                  {agentsSaving ? "Saving…" : "Save"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setAgentsDraft(
-                      currentAgentIds.length > 0 ? currentAgentIds : [""],
-                    );
-                    setAgentsError(null);
-                  }}
-                  disabled={agentsSaving}
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <RetellNumbersCard
+        companyId={company.id}
+        numbers={company.retellNumbers}
+        currentUserRole={currentUserRole}
+        onChanged={onChanged}
+      />
 
       <Card>
         <CardHeader>
@@ -446,81 +327,43 @@ export function SettingsTab({
         <CardHeader>
           <CardTitle>Retell</CardTitle>
           <CardDescription>
-            Area code and the Retell phone number for this company.
+            Company-level Retell configuration.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="area-code">Area code</Label>
-              <Input
-                id="area-code"
-                value={areaCodeDraft}
-                placeholder="415"
-                onChange={(e) => setAreaCodeDraft(e.target.value)}
-              />
-              {areaCodeError && (
-                <p className="text-sm text-destructive">{areaCodeError}</p>
-              )}
-              {areaCodeDirty && (
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={saveAreaCode}
-                    disabled={areaCodeSaving}
-                  >
-                    {areaCodeSaving ? "Saving…" : "Save"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setAreaCodeDraft(currentAreaCode);
-                      setAreaCodeError(null);
-                    }}
-                    disabled={areaCodeSaving}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="retell-phone">Retell phone number</Label>
-              <Input
-                id="retell-phone"
-                value={retellPhoneDraft}
-                placeholder="+1(716)671-1980"
-                className="font-mono"
-                onChange={(e) => setRetellPhoneDraft(e.target.value)}
-              />
-              {retellPhoneError && (
-                <p className="text-sm text-destructive">{retellPhoneError}</p>
-              )}
-              {retellPhoneDirty && (
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={saveRetellPhone}
-                    disabled={retellPhoneSaving}
-                  >
-                    {retellPhoneSaving ? "Saving…" : "Save"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setRetellPhoneDraft(currentRetellPhone);
-                      setRetellPhoneError(null);
-                    }}
-                    disabled={retellPhoneSaving}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              )}
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="area-code">Area code</Label>
+            <Input
+              id="area-code"
+              value={areaCodeDraft}
+              placeholder="415"
+              onChange={(e) => setAreaCodeDraft(e.target.value)}
+            />
+            {areaCodeError && (
+              <p className="text-sm text-destructive">{areaCodeError}</p>
+            )}
+            {areaCodeDirty && (
+              <div className="mt-2 flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={saveAreaCode}
+                  disabled={areaCodeSaving}
+                >
+                  {areaCodeSaving ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setAreaCodeDraft(currentAreaCode);
+                    setAreaCodeError(null);
+                  }}
+                  disabled={areaCodeSaving}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -574,7 +417,7 @@ export function SettingsTab({
             <CardTitle className="text-destructive">Danger zone</CardTitle>
             <CardDescription>
               Permanently delete this company and everything attached to it
-              (users, calls, billing history, agent associations). This action
+              (users, calls, billing history, Retell numbers). This action
               cannot be undone.
             </CardDescription>
           </CardHeader>
@@ -594,7 +437,7 @@ export function SettingsTab({
                   </AlertDialogTitle>
                   <AlertDialogDescription>
                     This will permanently delete the company, all its users,
-                    calls, billing history and agent associations. This action
+                    calls, billing history and Retell numbers. This action
                     cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -619,5 +462,363 @@ export function SettingsTab({
         </Card>
       )}
     </div>
+  );
+}
+
+// ─── Retell numbers ──────────────────────────────────────────
+
+const EMPTY_NUMBER_DRAFT = { agentId: "", phoneNumber: "" };
+
+function RetellNumbersCard({
+  companyId,
+  numbers,
+  currentUserRole,
+  onChanged,
+}: {
+  companyId: string;
+  numbers: RetellNumberRow[];
+  currentUserRole: UserRole;
+  onChanged: () => void;
+}) {
+  // Optimistic toggle state: overrides win over the server value while a
+  // toggle is in flight; a failed toggle removes the override (revert).
+  const [enabledOverrides, setEnabledOverrides] = useState<
+    Record<string, boolean>
+  >({});
+  const [pendingToggleIds, setPendingToggleIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [confirmDisable, setConfirmDisable] = useState<RetellNumberRow | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  // Add / edit inline form. editingId === "new" → add form.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState(EMPTY_NUMBER_DRAFT);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function isEnabled(row: RetellNumberRow) {
+    return enabledOverrides[row.id] ?? row.enabled;
+  }
+
+  async function performToggle(row: RetellNumberRow, next: boolean) {
+    setError(null);
+    setEnabledOverrides((prev) => ({ ...prev, [row.id]: next }));
+    setPendingToggleIds((prev) => new Set(prev).add(row.id));
+
+    const res = await fetch(
+      `/api/companies/${companyId}/retell-numbers/${row.id}/toggle`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      },
+    );
+
+    setPendingToggleIds((prev) => {
+      const copy = new Set(prev);
+      copy.delete(row.id);
+      return copy;
+    });
+
+    if (!res.ok) {
+      // Revert the optimistic move and surface the error.
+      setEnabledOverrides((prev) => {
+        const copy = { ...prev };
+        delete copy[row.id];
+        return copy;
+      });
+      const data = await res.json().catch(() => ({}));
+      setError(data?.error ?? "Failed to toggle number");
+      return;
+    }
+
+    onChanged();
+  }
+
+  function handleToggle(row: RetellNumberRow, next: boolean) {
+    if (next) {
+      // Turning on needs no confirmation.
+      void performToggle(row, true);
+    } else {
+      setConfirmDisable(row);
+    }
+  }
+
+  function startEdit(row: RetellNumberRow) {
+    setEditingId(row.id);
+    setDraft({
+      agentId: row.agentId,
+      phoneNumber: row.phoneNumber ? formatUsPhone(row.phoneNumber) : "",
+    });
+    setFormError(null);
+  }
+
+  function startAdd() {
+    setEditingId("new");
+    setDraft(EMPTY_NUMBER_DRAFT);
+    setFormError(null);
+  }
+
+  function cancelForm() {
+    setEditingId(null);
+    setDraft(EMPTY_NUMBER_DRAFT);
+    setFormError(null);
+  }
+
+  async function saveForm() {
+    const agentId = draft.agentId.trim();
+    const phoneNumber = draft.phoneNumber.trim();
+    if (agentId.length === 0) {
+      setFormError("Agent ID is required");
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+
+    const isNew = editingId === "new";
+    const url = isNew
+      ? `/api/companies/${companyId}/retell-numbers`
+      : `/api/companies/${companyId}/retell-numbers/${editingId}`;
+    const res = await fetch(url, {
+      method: isNew ? "POST" : "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agentId,
+        phoneNumber: phoneNumber.length > 0 ? phoneNumber : null,
+      }),
+    });
+    setSaving(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setFormError(data?.error ?? "Failed to save");
+      return;
+    }
+    cancelForm();
+    onChanged();
+  }
+
+  async function deleteNumber(row: RetellNumberRow) {
+    setError(null);
+    setDeletingId(row.id);
+    const res = await fetch(
+      `/api/companies/${companyId}/retell-numbers/${row.id}`,
+      { method: "DELETE" },
+    );
+    setDeletingId(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data?.error ?? "Failed to delete number");
+      return;
+    }
+    if (editingId === row.id) cancelForm();
+    onChanged();
+  }
+
+  const canManage = currentUserRole === "root" || currentUserRole === "admin";
+
+  const numberForm = (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="retell-number-agent">Agent ID</Label>
+        <Input
+          id="retell-number-agent"
+          value={draft.agentId}
+          placeholder="agent_..."
+          onChange={(e) => setDraft({ ...draft, agentId: e.target.value })}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="retell-number-phone">Phone number (optional)</Label>
+        <Input
+          id="retell-number-phone"
+          value={draft.phoneNumber}
+          placeholder="+1(716)671-1980"
+          className="font-mono"
+          onChange={(e) =>
+            setDraft({ ...draft, phoneNumber: e.target.value })
+          }
+        />
+      </div>
+      {formError && <p className="text-sm text-destructive">{formError}</p>}
+      <div className="mt-1 flex gap-2">
+        <Button size="sm" onClick={saveForm} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={cancelForm}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Retell numbers</CardTitle>
+        <CardDescription>
+          Number ↔ agent pairs for this company. The switch enables or
+          disables inbound routing live on Retell.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3">
+          {numbers.length === 0 && editingId !== "new" && (
+            <p className="text-sm text-muted-foreground">
+              No Retell numbers yet.
+            </p>
+          )}
+
+          {numbers.map((row) => {
+            if (editingId === row.id) {
+              return <div key={row.id}>{numberForm}</div>;
+            }
+
+            const eligibility = canToggleRetellNumber({
+              phoneNumber: row.phoneNumber,
+              role: currentUserRole,
+            });
+            const toggleHint = eligibility.allowed
+              ? undefined
+              : eligibility.reason === "no_phone"
+                ? "Add a phone number to enable toggling"
+                : "Only root can toggle";
+
+            return (
+              <div
+                key={row.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  {row.phoneNumber ? (
+                    <span className="font-mono text-sm text-foreground">
+                      {formatUsPhone(row.phoneNumber)}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground/60">
+                      No phone yet
+                    </span>
+                  )}
+                  <span className="truncate font-mono text-xs text-muted-foreground">
+                    {row.agentId}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span
+                    title={toggleHint}
+                    className="flex items-center gap-2"
+                  >
+                    <span className="text-xs text-muted-foreground">
+                      {isEnabled(row) ? "Active" : "Inactive"}
+                    </span>
+                    <Switch
+                      checked={isEnabled(row)}
+                      disabled={
+                        !eligibility.allowed || pendingToggleIds.has(row.id)
+                      }
+                      aria-label={
+                        toggleHint ??
+                        `Toggle ${formatUsPhone(row.phoneNumber)}`
+                      }
+                      onCheckedChange={(checked) =>
+                        handleToggle(row, checked === true)
+                      }
+                    />
+                  </span>
+                  {toggleHint && (
+                    <span className="sr-only">{toggleHint}</span>
+                  )}
+                  {canManage && (
+                    <span className="flex items-center gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Edit number"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => startEdit(row)}
+                      >
+                        <PencilIcon />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Delete number"
+                        className="text-muted-foreground hover:text-destructive"
+                        disabled={deletingId === row.id}
+                        onClick={() => deleteNumber(row)}
+                      >
+                        <XIcon />
+                      </Button>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {editingId === "new" && numberForm}
+
+          {canManage && editingId === null && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              onClick={startAdd}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Add number
+            </Button>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+      </CardContent>
+
+      <AlertDialog
+        open={confirmDisable !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDisable(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Disable {formatUsPhone(confirmDisable?.phoneNumber) || "number"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Inbound calls to this number will stop being answered until it
+              is enabled again. The change is applied live on Retell.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (confirmDisable) {
+                  void performToggle(confirmDisable, false);
+                }
+                setConfirmDisable(null);
+              }}
+            >
+              Disable
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
   );
 }

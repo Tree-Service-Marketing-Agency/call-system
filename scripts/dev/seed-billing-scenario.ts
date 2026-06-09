@@ -3,7 +3,7 @@ import bcryptjs from "bcryptjs";
 import { db } from "../../lib/db";
 import { runBillingChargeForCompany } from "../../lib/billing/charge-cron";
 import { insertCallChargeLedgerEntry } from "../../lib/billing/ledger";
-import { calls, companies, companyAgents, users } from "../../lib/db/schema";
+import { calls, companies, retellNumbers, users } from "../../lib/db/schema";
 
 type Options = {
   calls: number;
@@ -164,7 +164,7 @@ async function main() {
       })
       .returning({ id: companies.id, name: companies.name });
 
-    await tx.insert(companyAgents).values({
+    await tx.insert(retellNumbers).values({
       companyId: company.id,
       agentId,
     });

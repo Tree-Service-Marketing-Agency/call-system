@@ -60,7 +60,7 @@ export async function GET(
     },
     createdAt: company.createdAt,
     // External contract unchanged (n8n): same `{ id, agentId, companyId }`
-    // shape, now sourced from retell_numbers instead of company_agents.
+    // shape, sourced from retell_numbers.
     agents: company.retellNumbers.map((n) => ({
       id: n.id,
       agentId: n.agentId,

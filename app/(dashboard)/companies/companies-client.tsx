@@ -14,20 +14,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageBody } from "@/components/layout/page-body";
 import { FilterBar } from "@/components/dashboard/filter-bar";
 import { DataTablePagination } from "@/components/dashboard/data-table-pagination";
 import { formatUsPhone } from "@/lib/phone";
+import type { RetellStatus } from "@/lib/retell-numbers";
 import { CreateCompanyDialog } from "./create-company-dialog";
 
 interface CompanyRow {
   id: string;
   name: string;
-  retellPhoneNumber: string | null;
-  monthlyBillingCents: number;
+  retellStatus: RetellStatus;
+  phoneNumbers: string[];
 }
+
+const STATUS_BADGES: Record<
+  Exclude<RetellStatus, "none">,
+  { label: string; variant: "success" | "warning" | "secondary" }
+> = {
+  active: { label: "Active", variant: "success" },
+  partial: { label: "Partial", variant: "warning" },
+  inactive: { label: "Inactive", variant: "secondary" },
+};
 
 interface CompaniesResponse {
   data: CompanyRow[];
@@ -96,7 +107,7 @@ export function CompaniesClient() {
     <>
       <PageHeader
         title="Companies"
-        subtitle="Tenant companies and their billing footprint."
+        subtitle="Tenant companies and their Retell numbers."
         actions={
           <Button onClick={() => setShowCreate(true)}>
             <PlusIcon data-icon="inline-start" />
@@ -130,7 +141,7 @@ export function CompaniesClient() {
               <TableRow>
                 <TableHead>Company</TableHead>
                 <TableHead>Retell number</TableHead>
-                <TableHead className="text-right">Billing this month</TableHead>
+                <TableHead className="text-right">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -157,14 +168,30 @@ export function CompaniesClient() {
                       </span>
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {company.retellPhoneNumber ? (
-                        <span>{formatUsPhone(company.retellPhoneNumber)}</span>
+                      {company.phoneNumbers.length > 0 ? (
+                        <span>
+                          {formatUsPhone(company.phoneNumbers[0])}
+                          {company.phoneNumbers.length > 1 && (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              +{company.phoneNumbers.length - 1}
+                            </span>
+                          )}
+                        </span>
                       ) : (
-                        <span className="text-muted-foreground">Not assigned</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      ${(Number(company.monthlyBillingCents ?? 0) / 100).toFixed(2)}
+                    <TableCell className="text-right">
+                      {company.retellStatus === "none" ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <Badge
+                          variant={STATUS_BADGES[company.retellStatus].variant}
+                        >
+                          {STATUS_BADGES[company.retellStatus].label}
+                        </Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
