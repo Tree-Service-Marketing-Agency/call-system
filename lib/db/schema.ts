@@ -83,6 +83,7 @@ export const companies = pgTable(
 
 export const companiesRelations = relations(companies, ({ many }) => ({
   agents: many(companyAgents),
+  retellNumbers: many(retellNumbers),
   users: many(users),
 }));
 
@@ -105,6 +106,40 @@ export const companyAgents = pgTable(
 export const companyAgentsRelations = relations(companyAgents, ({ one }) => ({
   company: one(companies, {
     fields: [companyAgents.companyId],
+    references: [companies.id],
+  }),
+}));
+
+// ─── Retell Numbers ──────────────────────────────────────────
+// ADR-010: a Retell number is a number↔agent pair (1:1), many per
+// company. Replaces `company_agents` and `companies.retell_phone_number`
+// in a later phase (both kept for now during the migration window).
+
+export const retellNumbers = pgTable(
+  "retell_numbers",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    // E.164 US (e.g. +17163210677). Null for legacy rows pending manual fixup.
+    phoneNumber: text("phone_number"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("retell_numbers_agent_id_idx").on(table.agentId),
+    uniqueIndex("retell_numbers_phone_number_idx").on(table.phoneNumber),
+  ]
+);
+
+export const retellNumbersRelations = relations(retellNumbers, ({ one }) => ({
+  company: one(companies, {
+    fields: [retellNumbers.companyId],
     references: [companies.id],
   }),
 }));
