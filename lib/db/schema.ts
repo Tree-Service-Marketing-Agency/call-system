@@ -71,7 +71,6 @@ export const companies = pgTable(
       .default(sql`'[]'::jsonb`),
     leadSnapWebhook: text("lead_snap_webhook"),
     areaCode: text("area_code"),
-    retellPhoneNumber: text("retell_phone_number"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -82,38 +81,14 @@ export const companies = pgTable(
 );
 
 export const companiesRelations = relations(companies, ({ many }) => ({
-  agents: many(companyAgents),
   retellNumbers: many(retellNumbers),
   users: many(users),
 }));
 
-// ─── Company Agents ──────────────────────────────────────────
-
-export const companyAgents = pgTable(
-  "company_agents",
-  {
-    id: text("id")
-      .primaryKey()
-      .$defaultFn(() => crypto.randomUUID()),
-    companyId: text("company_id")
-      .notNull()
-      .references(() => companies.id, { onDelete: "cascade" }),
-    agentId: text("agent_id").notNull(),
-  },
-  (table) => [uniqueIndex("company_agents_agent_id_idx").on(table.agentId)]
-);
-
-export const companyAgentsRelations = relations(companyAgents, ({ one }) => ({
-  company: one(companies, {
-    fields: [companyAgents.companyId],
-    references: [companies.id],
-  }),
-}));
-
 // ─── Retell Numbers ──────────────────────────────────────────
 // ADR-010: a Retell number is a number↔agent pair (1:1), many per
-// company. Replaces `company_agents` and `companies.retell_phone_number`
-// in a later phase (both kept for now during the migration window).
+// company. Replaces the legacy company↔agent mapping and the single
+// company-level phone column (both dropped in phase 3 of PRD #41).
 
 export const retellNumbers = pgTable(
   "retell_numbers",

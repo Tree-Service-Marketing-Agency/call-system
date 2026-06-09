@@ -88,7 +88,7 @@ npx tsx --env-file=.env scripts/dev/seed-billing-scenario.ts \
 
 Appends N mock calls to an **existing** company — does not create new companies. Useful for quickly pushing an existing company's balance past the threshold so you can test a charge run.
 
-It reuses the first agent already linked to the company in `company_agents`, reads the per-call price from `business_config.pricePerCallCents`, inserts the calls + ledger entries inside one transaction, and bumps `companies.current_balance_cents` by `calls * price`. It does **not** trigger the billing charge — run the cron afterwards via the "Run billing now" button in `/billing` (as root or agency) or `POST /api/billing/run-cron`.
+It reuses the first agent already linked to the company in `retell_numbers`, reads the per-call price from `business_config.pricePerCallCents`, inserts the calls + ledger entries inside one transaction, and bumps `companies.current_balance_cents` by `calls * price`. It does **not** trigger the billing charge — run the cron afterwards via the "Run billing now" button in `/billing` (as root or agency) or `POST /api/billing/run-cron`.
 
 | Flag | Description |
 | --- | --- |

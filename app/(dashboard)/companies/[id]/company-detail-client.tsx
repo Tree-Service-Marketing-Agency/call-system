@@ -17,22 +17,19 @@ import { PageBody } from "@/components/layout/page-body";
 import { CallsClient } from "@/app/(dashboard)/calls/calls-client";
 import type { SessionUser } from "@/lib/auth-helpers";
 import type { NotificationPhone } from "@/lib/notification-phones";
-import { formatUsPhone } from "@/lib/phone";
-import { SettingsTab } from "./tabs/settings-tab";
+import { SettingsTab, type RetellNumberRow } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
 import { EditCompanyNameDialog } from "./edit-company-name-dialog";
-import { EditRetellPhoneDialog } from "./edit-retell-phone-dialog";
 
 interface CompanyDetail {
   id: string;
   name: string;
   areaCode: string | null;
-  retellPhoneNumber: string | null;
   createdAt: string;
   notificationPhones: NotificationPhone[];
   leadSnapWebhook: string | null;
-  agents: { id: string; agentId: string }[];
+  retellNumbers: RetellNumberRow[];
   users: {
     id: string;
     email: string;
@@ -40,7 +37,8 @@ interface CompanyDetail {
     isActive: boolean;
     createdAt: string;
   }[];
-  agentCount: number;
+  numberCount: number;
+  activeNumberCount: number;
   userCount: number;
   monthlyBillingCents: number;
 }
@@ -70,7 +68,6 @@ export function CompanyDetailClient({
 
   const [company, setCompany] = useState<CompanyDetail | null>(null);
   const [editNameOpen, setEditNameOpen] = useState(false);
-  const [editPhoneOpen, setEditPhoneOpen] = useState(false);
 
   const tabParam = searchParams.get("tab");
   const activeTab: TabValue = isTabValue(tabParam) ? tabParam : DEFAULT_TAB;
@@ -116,10 +113,14 @@ export function CompanyDetailClient({
     );
   }
 
-  const subtitle = `${pluralize(company.agentCount, "agent")} · ${pluralize(
-    company.userCount,
-    "user",
-  )} · $${(company.monthlyBillingCents / 100).toFixed(2)} this month`;
+  const numbersSummary =
+    company.numberCount === 0
+      ? "No Retell numbers"
+      : `${pluralize(company.numberCount, "number")} · ${company.activeNumberCount} active`;
+
+  const subtitle = `${pluralize(company.userCount, "user")} · $${(
+    company.monthlyBillingCents / 100
+  ).toFixed(2)} this month`;
 
   return (
     <Tabs
@@ -166,28 +167,15 @@ export function CompanyDetailClient({
                 <PencilIcon />
               </Button>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={
-                  company.retellPhoneNumber
-                    ? "font-mono text-sm text-muted-foreground"
-                    : "text-sm text-muted-foreground/60"
-                }
-              >
-                {company.retellPhoneNumber
-                  ? formatUsPhone(company.retellPhoneNumber)
-                  : "Add number"}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Edit Retell phone number"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => setEditPhoneOpen(true)}
-              >
-                <PencilIcon />
-              </Button>
-            </div>
+            <span
+              className={
+                company.numberCount > 0
+                  ? "text-sm text-muted-foreground"
+                  : "text-sm text-muted-foreground/60"
+              }
+            >
+              {numbersSummary}
+            </span>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
         </div>
@@ -197,14 +185,6 @@ export function CompanyDetailClient({
           onOpenChange={setEditNameOpen}
           companyId={company.id}
           currentName={company.name}
-          onSaved={fetchCompany}
-        />
-
-        <EditRetellPhoneDialog
-          open={editPhoneOpen}
-          onOpenChange={setEditPhoneOpen}
-          companyId={company.id}
-          currentValue={company.retellPhoneNumber}
           onSaved={fetchCompany}
         />
 

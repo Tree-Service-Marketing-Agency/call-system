@@ -1,12 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../lib/db";
 import { insertCallChargeLedgerEntry } from "../../lib/billing/ledger";
-import {
-  calls,
-  companies,
-  companyAgents,
-  businessConfig,
-} from "../../lib/db/schema";
+import { calls, companies, retellNumbers } from "../../lib/db/schema";
 
 type Options = {
   companyId: string;
@@ -27,7 +22,7 @@ Env:
   (Node >= 20.6) or export the variable manually before running.
 
 Notes:
-  - Reuses the first agent already linked to the company in company_agents.
+  - Reuses the first agent already linked to the company in retell_numbers.
   - Reads price per call from business_config.price_per_call_cents.
   - Bumps companies.current_balance_cents by calls * price.
   - Does NOT run the billing charge. Trigger it afterwards via the
@@ -85,12 +80,12 @@ async function main() {
     throw new Error(`Company not found: ${options.companyId}`);
   }
 
-  const agentLink = await db.query.companyAgents.findFirst({
-    where: eq(companyAgents.companyId, options.companyId),
+  const agentLink = await db.query.retellNumbers.findFirst({
+    where: eq(retellNumbers.companyId, options.companyId),
   });
   if (!agentLink) {
     throw new Error(
-      `Company ${options.companyId} has no agents in company_agents. ` +
+      `Company ${options.companyId} has no agents in retell_numbers. ` +
         `Link an agent before seeding calls.`
     );
   }
