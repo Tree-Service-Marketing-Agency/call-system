@@ -4,7 +4,8 @@ Aplica la migración `drizzle/0010_unique_black_tarantula.sql` (crea la tabla
 `retell_numbers`), corre el backfill desde `company_agents`, y — **al final,
 tras el fixup manual y los smoke tests** — aplica la migración de drop
 `drizzle/0011_mixed_randall_flagg.sql`. **Lo ejecuta el usuario (root), no el
-agente.**
+agente.** Contexto y decisión del modelo:
+[ADR-010](../decisions/adr-010-retell-numbers-toggle.md).
 
 > ⚠️ **Nunca uses `drizzle-kit push`.** Muta la BD sin pasar por archivos de
 > migración y desincroniza el tracking (`drizzle.__drizzle_migrations`).

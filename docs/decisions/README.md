@@ -12,6 +12,8 @@
 | [006](./adr-006-single-webhook-call-ended.md) | Consolidación en un solo webhook `call_ended`; eliminación de "Partial" | Aceptado | 2026-05-18 |
 | [007](./adr-007-auto-void-short-calls.md) | Auto-void de llamadas más cortas que un umbral configurable | Aceptado | 2026-05-18 |
 | [008](./adr-008-notification-phones-as-objects.md) | Notification phones como objetos `{ phone, note, disabled }` | Aceptado | 2026-05-19 |
+| [009](./adr-009-public-audio-call-page.md) | Página pública sin password para escuchar la Recording de una Call | Aceptado | 2026-05-26 |
+| [010](./adr-010-retell-numbers-toggle.md) | Retell numbers como pares número↔agente togglables (primera integración outbound a Retell) | Aceptado | 2026-06-09 |
 
 ---
 
