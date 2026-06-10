@@ -94,6 +94,10 @@ function SidebarProvider({
   }, [isMobile, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
+  // useEffect is required here: the listener needs the current toggleSidebar
+  // closure, which changes when isMobile flips. React 19.2 stable does not
+  // expose useEffectEvent, so re-registering on dep change is the cleanest
+  // option.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (

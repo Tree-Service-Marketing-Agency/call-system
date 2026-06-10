@@ -5,12 +5,15 @@ import {
   boolean,
   integer,
   bigint,
+  numeric,
+  jsonb,
   index,
   uniqueIndex,
   pgEnum,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
+import type { NotificationPhone } from "@/lib/notification-phones";
 
 // ─── Enums ───────────────────────────────────────────────────
 
@@ -62,6 +65,12 @@ export const companies = pgTable(
     currentBalanceCents: integer("current_balance_cents").notNull().default(0),
     billingUpdatedAt: timestamp("billing_updated_at"),
     lastNoPaymentWarningAt: timestamp("last_no_payment_warning_at"),
+    notificationPhones: jsonb("notification_phones")
+      .$type<NotificationPhone[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    leadSnapWebhook: text("lead_snap_webhook"),
+    areaCode: text("area_code"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -72,14 +81,17 @@ export const companies = pgTable(
 );
 
 export const companiesRelations = relations(companies, ({ many }) => ({
-  agents: many(companyAgents),
+  retellNumbers: many(retellNumbers),
   users: many(users),
 }));
 
-// ─── Company Agents ──────────────────────────────────────────
+// ─── Retell Numbers ──────────────────────────────────────────
+// ADR-010: a Retell number is a number↔agent pair (1:1), many per
+// company. Replaces the legacy company↔agent mapping and the single
+// company-level phone column (both dropped in phase 3 of PRD #41).
 
-export const companyAgents = pgTable(
-  "company_agents",
+export const retellNumbers = pgTable(
+  "retell_numbers",
   {
     id: text("id")
       .primaryKey()
@@ -88,13 +100,21 @@ export const companyAgents = pgTable(
       .notNull()
       .references(() => companies.id, { onDelete: "cascade" }),
     agentId: text("agent_id").notNull(),
+    // E.164 US (e.g. +17163210677). Null for legacy rows pending manual fixup.
+    phoneNumber: text("phone_number"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("company_agents_agent_id_idx").on(table.agentId)]
+  (table) => [
+    uniqueIndex("retell_numbers_agent_id_idx").on(table.agentId),
+    uniqueIndex("retell_numbers_phone_number_idx").on(table.phoneNumber),
+  ]
 );
 
-export const companyAgentsRelations = relations(companyAgents, ({ one }) => ({
+export const retellNumbersRelations = relations(retellNumbers, ({ one }) => ({
   company: one(companies, {
-    fields: [companyAgents.companyId],
+    fields: [retellNumbers.companyId],
     references: [companies.id],
   }),
 }));
@@ -166,6 +186,12 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
 
 // ─── Calls ───────────────────────────────────────────────────
 
+export type TranscriptTurn = {
+  role: "agent" | "user";
+  content: string;
+};
+
+
 export const calls = pgTable(
   "calls",
   {
@@ -177,7 +203,7 @@ export const calls = pgTable(
     companyId: text("company_id").references(() => companies.id, {
       onDelete: "set null",
     }),
-    // Webhook 1 — datos del cliente
+    // ADR-006: all fields below arrive in a single call_ended webhook.
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
     customerAddress: text("customer_address"),
@@ -186,7 +212,7 @@ export const calls = pgTable(
     service: text("service"),
     summary: text("summary"),
     callDate: text("call_date"),
-    // Webhook 2 — call metadata
+    // Call metadata
     event: text("event"),
     retellEvent: text("retell_event"),
     callStatus: text("call_status"),
@@ -195,16 +221,16 @@ export const calls = pgTable(
     endTimestamp: bigint("end_timestamp", { mode: "number" }),
     durationMs: integer("duration_ms"),
     audioUrl: text("audio_url"),
-    retellCost: text("retell_cost"),
+    // USD dollars decimal. Visible only to root/admin (ADR-003).
+    retellCost: numeric("retell_cost", { precision: 10, scale: 6 }),
+    // ADR-004: filtered transcript [{role, content}] from n8n.
+    transcript: jsonb("transcript").$type<TranscriptTurn[]>(),
     // Billing
     billingPriceCents: integer("billing_price_cents"),
     billingCountedAt: timestamp("billing_counted_at"),
     invoiceId: text("invoice_id").references((): AnyPgColumn => invoices.id, {
       onDelete: "set null",
     }),
-    // Flags
-    webhook1Received: boolean("webhook1_received").default(false).notNull(),
-    webhook2Received: boolean("webhook2_received").default(false).notNull(),
     // Timestamps
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -290,9 +316,15 @@ export const businessConfig = pgTable("business_config", {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   pricePerCallCents: integer("price_per_call_cents").notNull().default(100),
-  billingThresholdCents: integer("billing_threshold_cents")
+  billingThresholdCalls: integer("billing_threshold_calls")
     .notNull()
-    .default(5000),
+    .default(25),
+  // ADR-007: Calls shorter than this (in seconds) are auto-voided at
+  // ingestion. 0 disables the rule. Compared strictly against
+  // calls.duration_ms (duration_ms < seconds * 1000).
+  minBillableDurationSeconds: integer("min_billable_duration_seconds")
+    .notNull()
+    .default(20),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   updatedBy: text("updated_by").references(() => users.id),
 });

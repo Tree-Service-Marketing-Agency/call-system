@@ -32,6 +32,30 @@ El sistema DEBE permitir editar usuarios a traves de un Sheet (shadcn) con confi
 - **THEN** se abre un Sheet con los datos editables
 - **THEN** al confirmar, se muestra un AlertDialog de confirmacion
 
+### Requirement: Reset de password para agency users
+
+El sistema DEBE permitir que `root` reemplace la contrasenia de usuarios agency desde `/users`.
+
+#### Scenario: root resetea password de admin
+
+- **WHEN** un `root` resetea la contrasenia de un usuario `admin`
+- **THEN** se genera una contrasenia temporal editable antes de confirmar
+- **THEN** la contrasenia temporal se muestra una sola vez despues de confirmar
+- **THEN** la contrasenia actual nunca se muestra
+
+#### Scenario: root resetea su propio password
+
+- **WHEN** un `root` resetea su propia contrasenia
+- **THEN** no se requiere capturar la contrasenia actual
+- **THEN** las sesiones activas no se revocan en esta iteracion
+
+#### Scenario: reset no permitido
+
+- **WHEN** un usuario distinto de `root` intenta resetear una contrasenia
+- **THEN** el sistema responde Forbidden
+- **WHEN** un `root` intenta resetear la contrasenia de otro `root`
+- **THEN** el sistema responde Forbidden
+
 ### Requirement: Desactivar usuario
 
 El sistema DEBE permitir desactivar usuarios a traves de un Switch (shadcn).

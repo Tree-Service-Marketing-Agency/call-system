@@ -2,7 +2,7 @@
 
 ## Flujo 1: Recepcion de llamada y almacenamiento
 
-Cuando un cliente llama al numero del agente Retell, el agente captura sus datos. n8n procesa la informacion y envia dos webhooks al dashboard: uno con los datos del cliente y otro con los metadatos de la llamada (audio, duracion, costo).
+Cuando un cliente llama al numero del agente Retell, el agente captura sus datos. Al terminar la llamada, n8n procesa toda la informacion y envia **un solo webhook** (`call_ended`) al dashboard con todos los datos: cliente, metadatos (audio, duracion, costo, timestamps) y transcript. (Ver ADR-006 — el antiguo webhook `call_data` se deprecó.)
 
 ```mermaid
 sequenceDiagram
@@ -15,14 +15,30 @@ sequenceDiagram
     C->>R: Llama al numero del agente
     R->>C: Saluda, pregunta nombre y servicio
     C->>R: Da sus datos personales
-    R->>N: Envia datos capturados
-    N->>API: Webhook 1 (datos del cliente)
-    API->>DB: Guarda call con datos del cliente
     Note over R: La llamada termina
-    R->>N: Envia metadatos de la llamada
-    N->>API: Webhook 2 (audio, duracion, costo)
-    API->>DB: Cruza por call_id, agrega audio_url y duracion
+    R->>N: Envia la llamada completa
+    N->>N: Desenvuelve array, renombra campos, "Not provided"→null
+    N->>API: Webhook call_ended (cliente + audio + duracion + costo + transcript)
+    API->>DB: Upsert call por (call_id, agent_id) con todos los datos
 ```
+
+### Decision de billing al ingerir (ADR-007)
+
+Tras el upsert, un modulo puro (`resolveBillingOutcome`) decide la **Ledger
+entry** segun esta precedencia fija:
+
+1. `disconnection_reason` no cobrable → **sin ledger** (celda `—`).
+2. Sin compania resuelta → **sin ledger** (celda `—`).
+3. `duration_ms < min_billable_duration_seconds · 1000` (estricto) → **Ledger
+   entry insertada directamente en `void`** (badge **Marked non-billable**,
+   `voided_by = NULL`). No suma al **Pending balance** ni setea
+   `billing_counted_at`. `duration_ms` nulo ⇒ se trata como cobrable
+   (fail-open); `min_billable_duration_seconds = 0` desactiva la regla.
+4. En otro caso → **Ledger entry `pending`** (+balance, `billing_counted_at`).
+
+El webhook responde `204` en todos los casos. `root` puede hacer **Restore**
+sobre una **Call** corta auto-voided (override de falso positivo): suma
+`amount_cents` al balance, correcto porque el auto-void nunca sumo.
 
 ---
 
@@ -83,16 +99,16 @@ flowchart TD
 
 ### Llamada (Call)
 
-Una llamada pasa por dos fases de llenado segun los webhooks que llegan.
+Desde ADR-006 una llamada se registra en una sola fase: el webhook `call_ended`
+trae todos los datos al terminar la llamada. No existe un estado intermedio
+"Parcial".
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Parcial: Webhook 1 (datos del cliente)
-    Parcial --> Completa: Webhook 2 (audio + duracion + costo)
+    [*] --> Completa: Webhook call_ended (cliente + audio + duracion + costo + transcript)
     Completa --> [*]
 ```
 
 | Estado | Descripcion |
 |---|---|
-| Parcial | Se recibieron datos del cliente pero aun no hay audio ni duracion |
-| Completa | Ambos webhooks recibidos, registro completo |
+| Completa | Webhook `call_ended` recibido, registro completo |

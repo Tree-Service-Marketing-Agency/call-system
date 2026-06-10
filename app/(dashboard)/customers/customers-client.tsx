@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useState, useCallback } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
+
 import {
   Table,
   TableBody,
@@ -9,10 +11,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageBody } from "@/components/layout/page-body";
+import { FilterBar } from "@/components/dashboard/filter-bar";
+import { DataTablePagination } from "@/components/dashboard/data-table-pagination";
 import { CompanyFilter } from "@/components/company-filter";
 import { CustomerCallsExpanded } from "./customer-calls-expanded";
 import type { SessionUser } from "@/lib/auth-helpers";
+import { formatUsPhone } from "@/lib/phone";
 
 interface CustomerRow {
   customerPhone: string;
@@ -26,110 +32,157 @@ export function CustomersClient({ user }: { user: SessionUser }) {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
   const isAgency = user.role === "root" || user.role === "admin";
   const pageSize = 15;
 
-  const fetchCustomers = useCallback(() => {
-    const params = new URLSearchParams({ page: page.toString() });
-    if (companyFilter) params.set("companyId", companyFilter);
+  const fetchCustomers = useCallback(
+    (nextPage: number, nextCompanyFilter: string) => {
+      const params = new URLSearchParams({ page: nextPage.toString() });
+      if (nextCompanyFilter && nextCompanyFilter !== "all")
+        params.set("companyId", nextCompanyFilter);
 
-    fetch(`/api/customers?${params}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setCustomers(data.data);
-        setTotal(data.total);
-      });
-  }, [page, companyFilter]);
+      fetch(`/api/customers?${params}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setCustomers(data.data);
+          setTotal(data.total);
+        });
+    },
+    [],
+  );
 
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+  useMountEffect(() => {
+    fetchCustomers(page, companyFilter);
+  });
 
-  const totalPages = Math.ceil(total / pageSize);
+  const filtered = search
+    ? customers.filter((c) => {
+        const q = search.toLowerCase();
+        return (
+          (c.customerName?.toLowerCase().includes(q) ?? false) ||
+          c.customerPhone.toLowerCase().includes(q) ||
+          (c.customerCity?.toLowerCase().includes(q) ?? false)
+        );
+      })
+    : customers;
 
   return (
-    <div className="flex flex-col gap-4">
-      {isAgency && (
-        <CompanyFilter value={companyFilter} onChange={setCompanyFilter} />
-      )}
+    <>
+      <PageHeader
+        title="Customers"
+        subtitle="People who have called your agents."
+      />
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>City</TableHead>
-              <TableHead>Total Calls</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {customers.length === 0 ? (
+      <PageBody>
+        <FilterBar
+          search={{
+            value: search,
+            onChange: (v) => {
+              setSearch(v);
+              setPage(1);
+            },
+            placeholder: "Search by name, phone or city…",
+          }}
+          filters={
+            isAgency ? (
+              <CompanyFilter
+                value={companyFilter}
+                onChange={(v) => {
+                  setCompanyFilter(v);
+                  setPage(1);
+                  fetchCustomers(1, v);
+                }}
+              />
+            ) : null
+          }
+        />
+
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No customers found
-                </TableCell>
+                <TableHead>Customer</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Address</TableHead>
+                <TableHead>City</TableHead>
+                <TableHead className="text-right">Total calls</TableHead>
               </TableRow>
-            ) : (
-              customers.map((customer) => (
-                <>
-                  <TableRow
-                    key={customer.customerPhone}
-                    className="cursor-pointer"
-                    onClick={() =>
-                      setExpandedPhone(
-                        expandedPhone === customer.customerPhone
-                          ? null
-                          : customer.customerPhone
-                      )
-                    }
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="h-32 text-center text-sm text-muted-foreground"
                   >
-                    <TableCell>{customer.customerName ?? "—"}</TableCell>
-                    <TableCell>{customer.customerPhone}</TableCell>
-                    <TableCell>{customer.customerAddress ?? "—"}</TableCell>
-                    <TableCell>{customer.customerCity ?? "—"}</TableCell>
-                    <TableCell>{customer.totalCalls}</TableCell>
-                  </TableRow>
-                  {expandedPhone === customer.customerPhone && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="bg-muted/50 p-0">
-                        <CustomerCallsExpanded phone={customer.customerPhone} />
+                    No customers found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((customer) => (
+                  <Fragment key={customer.customerPhone}>
+                    <TableRow
+                      data-state={
+                        expandedPhone === customer.customerPhone
+                          ? "selected"
+                          : undefined
+                      }
+                      className="cursor-pointer"
+                      onClick={() =>
+                        setExpandedPhone(
+                          expandedPhone === customer.customerPhone
+                            ? null
+                            : customer.customerPhone,
+                        )
+                      }
+                    >
+                      <TableCell className="font-medium">
+                        {customer.customerName ?? (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-[12.5px] text-muted-foreground">
+                        {formatUsPhone(customer.customerPhone)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.customerAddress ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {customer.customerCity ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {customer.totalCalls}
                       </TableCell>
                     </TableRow>
-                  )}
-                </>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Showing {customers.length} of {total} customers
-        </p>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-          >
-            Next
-          </Button>
+                    {expandedPhone === customer.customerPhone && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="bg-muted/40 p-0">
+                          <CustomerCallsExpanded
+                            phone={customer.customerPhone}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          <DataTablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            itemLabel="customers"
+            onPageChange={(p) => {
+              setPage(p);
+              fetchCustomers(p, companyFilter);
+            }}
+          />
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </>
   );
 }

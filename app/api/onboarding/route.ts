@@ -1,0 +1,113 @@
+import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth-helpers";
+import { isValidAreaCode } from "@/lib/area-code";
+import { validateNotificationPhones } from "@/lib/notification-phones";
+import {
+  EmailAlreadyExistsError,
+  onboardCompany,
+} from "@/lib/onboarding/create-company";
+
+export async function POST(request: Request) {
+  const auth = await requireRole("root", "admin");
+  if (!auth.ok) return auth.response;
+
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const {
+    name,
+    areaCode,
+    notificationPhones,
+    leadSnapWebhook,
+    userEmail,
+    userPassword,
+  } = body as {
+    name?: unknown;
+    areaCode?: unknown;
+    notificationPhones?: unknown;
+    leadSnapWebhook?: unknown;
+    userEmail?: unknown;
+    userPassword?: unknown;
+  };
+
+  if (typeof name !== "string" || name.trim().length === 0) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  }
+  if (typeof areaCode !== "string" || !isValidAreaCode(areaCode.trim())) {
+    return NextResponse.json(
+      { error: "area code must be 3 digits" },
+      { status: 400 }
+    );
+  }
+  if (typeof userEmail !== "string" || userEmail.trim().length === 0) {
+    return NextResponse.json(
+      { error: "userEmail is required" },
+      { status: 400 }
+    );
+  }
+  if (typeof userPassword !== "string" || userPassword.length === 0) {
+    return NextResponse.json(
+      { error: "userPassword is required" },
+      { status: 400 }
+    );
+  }
+  const validatedPhones = validateNotificationPhones(notificationPhones);
+  if (!validatedPhones.ok) {
+    return NextResponse.json(
+      { error: validatedPhones.error },
+      { status: 400 }
+    );
+  }
+  // Onboarding (unlike Settings) requires at least one usable phone.
+  if (validatedPhones.value.length === 0) {
+    return NextResponse.json(
+      { error: "At least one valid notification phone is required" },
+      { status: 400 }
+    );
+  }
+
+  const cleanedLeadSnap =
+    typeof leadSnapWebhook === "string" && leadSnapWebhook.trim().length > 0
+      ? leadSnapWebhook.trim()
+      : null;
+
+  try {
+    const { company, user } = await onboardCompany({
+      name: name.trim(),
+      areaCode: areaCode.trim(),
+      notificationPhones: validatedPhones.value,
+      leadSnapWebhook: cleanedLeadSnap,
+      userEmail: userEmail.trim(),
+      userPassword,
+    });
+
+    return NextResponse.json(
+      {
+        company,
+        user: { email: user.email, password: userPassword },
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    if (error instanceof EmailAlreadyExistsError) {
+      return NextResponse.json(
+        { error: "Email already in use" },
+        { status: 409 }
+      );
+    }
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505"
+    ) {
+      return NextResponse.json(
+        { error: "Email already in use" },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
+}

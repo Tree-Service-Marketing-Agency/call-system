@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   Select,
   SelectContent,
@@ -24,16 +25,23 @@ export function CompanyFilter({
 }) {
   const [companies, setCompanies] = useState<Company[]>([]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetch("/api/companies?minimal=true")
       .then((res) => res.json())
       .then((data) => setCompanies(data.data ?? []));
-  }, []);
+  });
+
+  const nameById = new Map(companies.map((c) => [c.id, c.name]));
 
   return (
     <Select value={value} onValueChange={(v) => onChange(v ?? "")}>
       <SelectTrigger className="w-64">
-        <SelectValue placeholder="All companies" />
+        <SelectValue placeholder="All companies">
+          {(v) => {
+            if (!v || v === "all") return "All companies";
+            return nameById.get(String(v)) ?? "All companies";
+          }}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>

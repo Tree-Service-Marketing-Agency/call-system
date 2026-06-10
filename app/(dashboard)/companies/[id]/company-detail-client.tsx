@@ -1,32 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import Link from "next/link";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import { ArrowLeftIcon, PencilIcon } from "lucide-react";
+
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { ArrowLeftIcon } from "lucide-react";
-import { CreateUserDialog } from "@/components/create-user-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageBody } from "@/components/layout/page-body";
+import { CallsClient } from "@/app/(dashboard)/calls/calls-client";
+import type { SessionUser } from "@/lib/auth-helpers";
+import type { NotificationPhone } from "@/lib/notification-phones";
+import { SettingsTab, type RetellNumberRow } from "./tabs/settings-tab";
+import { UsersTab } from "./tabs/users-tab";
+import { BillingTab } from "./tabs/billing-tab";
+import { EditCompanyNameDialog } from "./edit-company-name-dialog";
 
 interface CompanyDetail {
   id: string;
   name: string;
+  areaCode: string | null;
   createdAt: string;
-  agents: { id: string; agentId: string }[];
+  notificationPhones: NotificationPhone[];
+  leadSnapWebhook: string | null;
+  retellNumbers: RetellNumberRow[];
   users: {
     id: string;
     email: string;
@@ -34,122 +37,199 @@ interface CompanyDetail {
     isActive: boolean;
     createdAt: string;
   }[];
+  numberCount: number;
+  activeNumberCount: number;
+  userCount: number;
+  monthlyBillingCents: number;
 }
 
-export function CompanyDetailClient({ companyId }: { companyId: string }) {
-  const [company, setCompany] = useState<CompanyDetail | null>(null);
-  const [showCreateUser, setShowCreateUser] = useState(false);
+const TAB_VALUES = ["calls", "settings", "users", "billing"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+const DEFAULT_TAB: TabValue = "calls";
 
-  function fetchCompany() {
+function isTabValue(v: string | null): v is TabValue {
+  return v !== null && (TAB_VALUES as readonly string[]).includes(v);
+}
+
+function pluralize(count: number, singular: string): string {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+export function CompanyDetailClient({
+  companyId,
+  user,
+}: {
+  companyId: string;
+  user: SessionUser;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [company, setCompany] = useState<CompanyDetail | null>(null);
+  const [editNameOpen, setEditNameOpen] = useState(false);
+
+  const tabParam = searchParams.get("tab");
+  const activeTab: TabValue = isTabValue(tabParam) ? tabParam : DEFAULT_TAB;
+
+  const fetchCompany = useCallback(() => {
     fetch(`/api/companies/${companyId}`)
       .then((res) => res.json())
-      .then(setCompany);
-  }
-
-  useEffect(() => {
-    fetchCompany();
+      .then((data: CompanyDetail) => setCompany(data));
   }, [companyId]);
 
-  async function toggleUserActive(userId: string, isActive: boolean) {
-    await fetch(`/api/users/${userId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive }),
-    });
+  useMountEffect(() => {
     fetchCompany();
+  });
+
+  const setTab = useCallback(
+    (next: TabValue) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === DEFAULT_TAB) {
+        params.delete("tab");
+      } else {
+        params.set("tab", next);
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  if (!company) {
+    return (
+      <>
+        <div className="flex items-end justify-between gap-4 px-7 pt-6 pb-4">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
+              Loading…
+            </h1>
+          </div>
+        </div>
+        <PageBody>
+          <p className="text-sm text-muted-foreground">Loading company…</p>
+        </PageBody>
+      </>
+    );
   }
 
-  async function deleteUser(userId: string) {
-    if (!confirm("Are you sure you want to delete this user?")) return;
-    await fetch(`/api/users/${userId}`, { method: "DELETE" });
-    fetchCompany();
-  }
+  const numbersSummary =
+    company.numberCount === 0
+      ? "No Retell numbers"
+      : `${pluralize(company.numberCount, "number")} · ${company.activeNumberCount} active`;
 
-  if (!company) return <p>Loading...</p>;
+  const subtitle = `${pluralize(company.userCount, "user")} · $${(
+    company.monthlyBillingCents / 100
+  ).toFixed(2)} this month`;
 
   return (
-    <>
-      <div className="flex items-center gap-4">
-        <Link href="/companies">
-          <Button variant="ghost" size="icon">
-            <ArrowLeftIcon />
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-bold">{company.name}</h1>
+    <Tabs
+      value={activeTab}
+      onValueChange={(v) => setTab(v as TabValue)}
+      className="flex flex-1 flex-col gap-0"
+    >
+      <div className="flex flex-col gap-3 border-b border-border px-7 pt-6 pb-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Link href="/companies">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to companies"
+              className="-ml-1"
+            >
+              <ArrowLeftIcon />
+            </Button>
+          </Link>
+          <Link
+            href="/companies"
+            className="hover:text-foreground"
+          >
+            Companies
+          </Link>
+          <span>/</span>
+          <span className="text-foreground">{company.name}</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Avatar name={company.name} size="lg" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
+                {company.name}
+              </h1>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Edit company name"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setEditNameOpen(true)}
+              >
+                <PencilIcon />
+              </Button>
+            </div>
+            <span
+              className={
+                company.numberCount > 0
+                  ? "text-sm text-muted-foreground"
+                  : "text-sm text-muted-foreground/60"
+              }
+            >
+              {numbersSummary}
+            </span>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
+          </div>
+        </div>
+
+        <EditCompanyNameDialog
+          open={editNameOpen}
+          onOpenChange={setEditNameOpen}
+          companyId={company.id}
+          currentName={company.name}
+          onSaved={fetchCompany}
+        />
+
+        <TabsList variant="line" className="mt-1 h-auto gap-4 px-0">
+          <TabsTrigger value="calls" className="px-1 pb-2.5">
+            Calls
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="px-1 pb-2.5">
+            Settings
+          </TabsTrigger>
+          <TabsTrigger value="users" className="px-1 pb-2.5">
+            Users
+          </TabsTrigger>
+          <TabsTrigger value="billing" className="px-1 pb-2.5">
+            Billing
+          </TabsTrigger>
+        </TabsList>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Agents</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {company.agents.map((agent) => (
-              <Badge key={agent.id} variant="secondary">
-                {agent.agentId}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Users</CardTitle>
-          <Button size="sm" onClick={() => setShowCreateUser(true)}>
-            Add User
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {company.users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>{u.email}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{u.role}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={u.isActive}
-                      onCheckedChange={(checked) =>
-                        toggleUserActive(u.id, checked)
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteUser(u.id)}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <CreateUserDialog
-        open={showCreateUser}
-        onOpenChange={setShowCreateUser}
-        companyId={companyId}
-        onCreated={() => {
-          setShowCreateUser(false);
-          fetchCompany();
-        }}
-      />
-    </>
+      <PageBody>
+        <TabsContent value="calls" className="flex flex-1 flex-col gap-5">
+          <CallsClient
+            user={user}
+            companyId={companyId}
+            showHeader={false}
+          />
+        </TabsContent>
+        <TabsContent value="settings" className="flex flex-1 flex-col gap-5">
+          <SettingsTab
+            company={company}
+            currentUserRole={user.role}
+            onChanged={fetchCompany}
+          />
+        </TabsContent>
+        <TabsContent value="users" className="flex flex-1 flex-col gap-5">
+          <UsersTab
+            companyId={companyId}
+            users={company.users}
+            onChanged={fetchCompany}
+          />
+        </TabsContent>
+        <TabsContent value="billing" className="flex flex-1 flex-col gap-5">
+          <BillingTab companyId={companyId} />
+        </TabsContent>
+      </PageBody>
+    </Tabs>
   );
 }

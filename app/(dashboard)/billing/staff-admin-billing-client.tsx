@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import {
   Card,
   CardContent,
@@ -23,7 +24,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CreditCardIcon } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CreditCardIcon, MoreHorizontalIcon, PhoneCallIcon } from "lucide-react";
+import Link from "next/link";
 import { CardSetupForm } from "@/components/billing/card-setup-form";
 
 interface InvoiceRow {
@@ -51,7 +59,8 @@ interface BillingData {
   companyId?: string;
   companyName?: string;
   balanceCents: number;
-  thresholdCents: number;
+  pendingCallsCount: number;
+  thresholdCalls: number;
   billingStatus: "idle" | "charging" | "payment_pending" | "uncollectible";
   hasStripeCustomer?: boolean;
   paymentMethod: PaymentMethod | null;
@@ -65,43 +74,38 @@ function usd(cents: number): string {
 function statusBadge(status: BillingData["billingStatus"]) {
   switch (status) {
     case "idle":
-      return (
-        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-          Up to date
-        </Badge>
-      );
+      return <Badge variant="success">Up to date</Badge>;
     case "charging":
-      return (
-        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          Processing charge
-        </Badge>
-      );
+      return <Badge variant="secondary">Processing charge</Badge>;
     case "payment_pending":
-      return (
-        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-          Payment pending
-        </Badge>
-      );
+      return <Badge variant="warning">Payment pending</Badge>;
     case "uncollectible":
       return <Badge variant="destructive">Requires attention</Badge>;
   }
 }
 
 function invoiceStatusBadge(status: string) {
-  const map: Record<string, { label: string; className?: string; variant?: "destructive" | "secondary" | "outline" }> =
+  const map: Record<
+    string,
     {
-      paid: { label: "Paid", className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" },
-      pending: { label: "Pending", className: "bg-blue-100 text-blue-800 hover:bg-blue-100" },
-      failed: { label: "Failed", className: "bg-amber-100 text-amber-800 hover:bg-amber-100" },
-      uncollectible: { label: "Uncollectible", variant: "destructive" },
-      creation_failed: { label: "Error", variant: "destructive" },
-    };
-  const cfg = map[status] ?? { label: status };
-  return (
-    <Badge className={cfg.className} variant={cfg.variant}>
-      {cfg.label}
-    </Badge>
-  );
+      label: string;
+      variant:
+        | "default"
+        | "secondary"
+        | "destructive"
+        | "outline"
+        | "success"
+        | "warning";
+    }
+  > = {
+    paid: { label: "Paid", variant: "success" },
+    pending: { label: "Pending", variant: "secondary" },
+    failed: { label: "Failed", variant: "warning" },
+    uncollectible: { label: "Uncollectible", variant: "destructive" },
+    creation_failed: { label: "Error", variant: "destructive" },
+  };
+  const cfg = map[status] ?? { label: status, variant: "outline" as const };
+  return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
 }
 
 export function StaffAdminBillingClient() {
@@ -115,9 +119,9 @@ export function StaffAdminBillingClient() {
       .then(setData);
   }, []);
 
-  useEffect(() => {
+  useMountEffect(() => {
     refresh();
-  }, [refresh]);
+  });
 
   async function openPortal() {
     setOpeningPortal(true);
@@ -140,26 +144,33 @@ export function StaffAdminBillingClient() {
 
   const pct = Math.min(
     100,
-    Math.round((data.balanceCents / Math.max(1, data.thresholdCents)) * 100)
+    Math.round(
+      (data.pendingCallsCount / Math.max(1, data.thresholdCalls)) * 100
+    )
   );
   const barColor =
     pct >= 100
-      ? "bg-red-500"
+      ? "bg-destructive"
       : pct >= 80
-        ? "bg-amber-500"
-        : "bg-emerald-500";
+        ? "bg-[rgb(180,83,9)]"
+        : "bg-primary";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Current balance</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending calls</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <p className="text-3xl font-bold">{usd(data.balanceCents)}</p>
+            <p className="text-3xl font-bold">
+              {data.pendingCallsCount}{" "}
+              <span className="text-base font-normal text-muted-foreground">
+                / {data.thresholdCalls}
+              </span>
+            </p>
             <p className="text-xs text-muted-foreground">
-              of {usd(data.thresholdCents)} (global threshold)
+              {usd(data.balanceCents)} accumulated
             </p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
@@ -168,8 +179,8 @@ export function StaffAdminBillingClient() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Your next charge will be processed automatically when your
-              balance reaches the threshold.
+              Your next charge will be processed automatically when you reach
+              the threshold.
             </p>
           </CardContent>
         </Card>
@@ -227,7 +238,7 @@ export function StaffAdminBillingClient() {
             {statusBadge(data.billingStatus)}
             {data.billingStatus === "payment_pending" && (
               <button
-                className="text-left text-sm text-blue-600 underline"
+                className="text-left text-sm text-primary underline-offset-4 hover:underline"
                 onClick={openPortal}
               >
                 Update card
@@ -277,17 +288,34 @@ export function StaffAdminBillingClient() {
                     <TableCell>{invoiceStatusBadge(inv.status)}</TableCell>
                     <TableCell>{inv.entryCount}</TableCell>
                     <TableCell className="text-right">
-                      {inv.hostedInvoiceUrl ? (
-                        <a
-                          href={inv.hostedInvoiceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-600 underline"
-                        >
-                          View invoice
-                        </a>
-                      ) : (
+                      {inv.status === "creation_failed" ? (
                         <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Invoice actions"
+                              >
+                                <MoreHorizontalIcon />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              render={
+                                <Link
+                                  href={`/billing/invoices/${inv.id}/calls`}
+                                >
+                                  <PhoneCallIcon />
+                                  View related calls
+                                </Link>
+                              }
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </TableCell>
                   </TableRow>

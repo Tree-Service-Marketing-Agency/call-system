@@ -60,10 +60,10 @@ const navItems = [
     roles: ["root", "admin"] as UserRole[],
   },
   {
-    title: "Users",
+    title: "Agency users",
     href: "/users",
     icon: UserIcon,
-    roles: ["root", "admin", "staff_admin"] as UserRole[],
+    roles: ["root", "admin"] as UserRole[],
   },
   {
     title: "Billing",

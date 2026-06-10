@@ -47,17 +47,19 @@ erDiagram
         int end_timestamp
         int duration_ms
         string audio_url
-        decimal call_cost "Costo Retell"
-        decimal billed_amount "Precio fijo cobrado al cliente"
+        numeric retell_cost "Costo real Retell en USD (solo agencia)"
+        int billing_price_cents "Precio fijo cobrado al cliente, en cents"
         datetime created_at
         datetime updated_at
     }
 
-    billing_config {
+    business_config {
         uuid id PK
-        decimal price_per_call
-        datetime effective_from
-        datetime created_at
+        int price_per_call_cents
+        int billing_threshold_calls
+        int min_billable_duration_seconds
+        datetime updated_at
+        text updated_by
     }
 
     companies ||--o{ agents : "tiene"
@@ -122,7 +124,7 @@ Usuarios del dashboard. Root y admin no tienen company_id (ven todo). Staff_admi
 
 ### calls
 
-Cada llamada registrada. Se llena en dos fases (webhook 1: datos cliente, webhook 2: audio y duracion).
+Cada llamada registrada. Se llena en una sola fase: el webhook `call_ended` trae todos los datos (cliente + audio + duracion + costo + transcript) al terminar la llamada. Ver ADR-006.
 
 | Campo | Tipo | Descripcion |
 |---|---|---|
@@ -143,13 +145,13 @@ Cada llamada registrada. Se llena en dos fases (webhook 1: datos cliente, webhoo
 | end_timestamp | BIGINT | Timestamp de fin (ms) |
 | duration_ms | INT | Duracion en milisegundos |
 | audio_url | VARCHAR | URL del audio de la llamada |
-| call_cost | DECIMAL | Costo de la llamada en Retell |
-| billed_amount | DECIMAL | Precio fijo cobrado al cliente |
+| retell_cost | NUMERIC(10,6) | Costo real Retell en USD dolares. Solo visible para root/admin. Ver ADR-003 |
+| billing_price_cents | INTEGER | Precio fijo cobrado al cliente, en centavos USD |
 | created_at | TIMESTAMP | Fecha de creacion del registro |
 | updated_at | TIMESTAMP | Ultima actualizacion |
 
 **Indices:**
-- `call_id` UNIQUE — para cruzar webhook 1 y 2
+- `(call_id, agent_id)` UNIQUE — idempotencia del upsert ante reproceso/retry de n8n
 - `company_id` — filtrar llamadas por compania
 - `date` — ordenar y filtrar por fecha
 - `phone` — agrupar por cliente en registro de clientes
@@ -157,16 +159,18 @@ Cada llamada registrada. Se llena en dos fases (webhook 1: datos cliente, webhoo
 **Relaciones:**
 - Pertenece a `companies` via `company_id`
 
-### billing_config
+### business_config
 
-Configuracion del precio por llamada. Solo el root puede modificarlo. Se guarda historico para que el precio aplique solo a llamadas futuras.
+Fila unica de configuracion global del modelo de negocio. Solo `root` puede modificarla (`/business-model`). Los cambios aplican solo a **Calls** futuras; no re-evaluan llamadas ya registradas.
 
 | Campo | Tipo | Descripcion |
 |---|---|---|
 | id | UUID | Identificador unico |
-| price_per_call | DECIMAL | Precio fijo por llamada |
-| effective_from | TIMESTAMP | Desde cuando aplica este precio |
-| created_at | TIMESTAMP | Fecha de creacion |
+| price_per_call_cents | INTEGER | Precio fijo por llamada en cents (default 100) |
+| billing_threshold_calls | INTEGER | Conteo de **Calls** pending que dispara el cron (default 25, ver ADR-005) |
+| min_billable_duration_seconds | INTEGER | Umbral en segundos bajo el cual una **Call** se auto-voida al ingerir. `NOT NULL DEFAULT 20`; `0` desactiva la regla. Ver ADR-007 |
+| updated_at | TIMESTAMP | Ultima actualizacion |
+| updated_by | TEXT | Usuario (`root`) que la actualizo |
 
 ---
 
@@ -174,7 +178,8 @@ Configuracion del precio por llamada. Solo el root puede modificarlo. Se guarda 
 
 - **UUID vs INT:** UUIDs para evitar IDs predecibles en URLs y facilitar integracion futura.
 - **agent_id como VARCHAR:** Es un ID externo de Retell (formato `agent_xxx`), no un UUID propio.
-- **call_id UNIQUE:** Permite que el webhook 2 haga UPDATE sobre el registro creado por el webhook 1.
-- **billed_amount en calls:** Se guarda el precio al momento de la llamada para que cambios futuros en billing_config no afecten llamadas pasadas.
+- **(call_id, agent_id) UNIQUE:** Hace idempotente el upsert de `call_ended` — un reproceso o retry de n8n actualiza la misma fila en vez de duplicarla (ADR-006).
+- **billing_price_cents en calls:** Se guarda el precio al momento de la llamada para que cambios futuros en billing_config no afecten llamadas pasadas.
+- **retell_cost en USD dolares (numeric), no en cents:** Decision documentada en ADR-003. n8n preprocesa el costo de Retell y lo manda como decimal en dolares. Se guarda tal cual con precision sub-centavo. Inconsistencia deliberada con billing_price_cents (integer cents).
 - **company_id en calls:** Se deriva del agent_id al recibir el webhook, evitando JOINs innecesarios en queries frecuentes.
 - **billing_config como tabla separada:** Permite historico de precios y saber que precio estaba vigente en cada momento.

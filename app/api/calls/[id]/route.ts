@@ -25,26 +25,33 @@ export async function GET(
   }
 
   const { id } = await params;
-  const call = await db.query.calls.findFirst({
-    where: eq(calls.id, id),
-  });
+  const [row] = await db
+    .select({
+      call: calls,
+      companyName: companies.name,
+    })
+    .from(calls)
+    .leftJoin(companies, eq(calls.companyId, companies.id))
+    .where(eq(calls.id, id))
+    .limit(1);
 
-  if (!call) {
+  if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (!isAgencyRole(user.role) && call.companyId !== user.companyId) {
+  // Staff can only see their company's calls
+  if (!isAgencyRole(user.role) && row.call.companyId !== user.companyId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const ledger = await db.query.billingLedger.findFirst({
-    where: eq(billingLedger.callRowId, call.id),
+    where: eq(billingLedger.callRowId, row.call.id),
   });
 
   let invoiceUrl: string | null = null;
-  if (call.invoiceId) {
+  if (row.call.invoiceId) {
     const invoice = await db.query.invoices.findFirst({
-      where: eq(invoices.id, call.invoiceId),
+      where: eq(invoices.id, row.call.invoiceId),
     });
     invoiceUrl = invoice?.hostedInvoiceUrl ?? null;
   }
@@ -57,31 +64,27 @@ export async function GET(
     voidedByEmail = voidUser?.email ?? null;
   }
 
-  let companyName: string | null = null;
-  if (call.companyId) {
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, call.companyId),
-    });
-    companyName = company?.name ?? null;
-  }
-
   const ledgerStatus: LedgerStatus | null = ledger?.status ?? null;
-  const state: BillingState = deriveBillingState({
-    webhook2Received: call.webhook2Received,
-    ledgerStatus,
-  });
+  const state: BillingState | null = deriveBillingState(ledgerStatus);
 
   const isRoot = user.role === "root";
   const canVoid = isRoot && ledgerStatus === "pending";
   const canRestore = isRoot && ledgerStatus === "void";
 
+  // ADR-003: retell_cost is agency-only. Strip it from the response for
+  // staff/staff_admin so it never reaches the browser.
+  const { retellCost, ...callWithoutCost } = row.call;
+  const callPayload = isAgencyRole(user.role)
+    ? { ...callWithoutCost, retellCost }
+    : callWithoutCost;
+
   return NextResponse.json({
-    ...call,
-    companyName,
+    ...callPayload,
+    companyName: row.companyName,
     billing: {
       state,
       ledgerStatus,
-      amountCents: ledger?.amountCents ?? call.billingPriceCents ?? null,
+      amountCents: ledger?.amountCents ?? row.call.billingPriceCents ?? null,
       invoiceUrl,
       voidedAt: ledger?.voidedAt ?? null,
       voidedByEmail,

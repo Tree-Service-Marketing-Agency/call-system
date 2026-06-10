@@ -3,7 +3,7 @@ import bcryptjs from "bcryptjs";
 import { db } from "../../lib/db";
 import { runBillingChargeForCompany } from "../../lib/billing/charge-cron";
 import { insertCallChargeLedgerEntry } from "../../lib/billing/ledger";
-import { calls, companies, companyAgents, users } from "../../lib/db/schema";
+import { calls, companies, retellNumbers, users } from "../../lib/db/schema";
 
 type Options = {
   calls: number;
@@ -131,14 +131,17 @@ async function main() {
   const hashedPassword = await bcryptjs.hash("admin123", 10);
 
   const config = await db.query.businessConfig.findFirst();
-  const thresholdCents = config?.billingThresholdCents ?? 5000;
+  const thresholdCalls = config?.billingThresholdCalls ?? 25;
   const configuredPriceCents = config?.pricePerCallCents ?? 100;
-  const minimumPriceForThreshold = Math.ceil(thresholdCents / options.calls);
-  const priceCents =
-    options.priceCents ??
-    (options.runBilling
-      ? Math.max(configuredPriceCents, minimumPriceForThreshold)
-      : configuredPriceCents);
+  const priceCents = options.priceCents ?? configuredPriceCents;
+
+  if (options.runBilling && options.calls < thresholdCalls) {
+    console.warn(
+      `[seed-billing-scenario] warning: --calls=${options.calls} is below ` +
+        `the billing threshold of ${thresholdCalls} calls. The cron will ` +
+        `not charge this company until it reaches ${thresholdCalls} pending calls.`
+    );
+  }
   const companyName = buildScenarioName(options.namePrefix);
   const agentId = `agent_seed_${crypto.randomUUID().slice(0, 12)}`;
   const adminEmail = `staff-admin+${crypto.randomUUID().slice(0, 8)}@test.com`;
@@ -161,7 +164,7 @@ async function main() {
       })
       .returning({ id: companies.id, name: companies.name });
 
-    await tx.insert(companyAgents).values({
+    await tx.insert(retellNumbers).values({
       companyId: company.id,
       agentId,
     });
@@ -208,8 +211,6 @@ async function main() {
           retellCost: JSON.stringify({ total_cost: "0.01", currency: "usd" }),
           billingPriceCents: priceCents,
           billingCountedAt: endedAt,
-          webhook1Received: true,
-          webhook2Received: true,
           createdAt: startedAt,
           updatedAt: endedAt,
         })
@@ -252,7 +253,7 @@ async function main() {
         staffAdminEmail: result.staffAdmin.email,
         staffAdminPassword: "admin123",
         priceCents,
-        thresholdCents,
+        thresholdCalls,
         callCount: options.calls,
         totalCents,
         stripeAttached: options.withStripe,

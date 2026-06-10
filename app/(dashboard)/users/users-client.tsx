@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
+import { KeyRoundIcon, PlusIcon } from "lucide-react";
+
 import {
   Table,
   TableBody,
@@ -12,20 +15,37 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { CreateUserDialog } from "@/components/create-user-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { CreateAgencyUserDialog } from "@/components/create-agency-user-dialog";
+import { ResetAgencyPasswordDialog } from "@/components/reset-agency-password-dialog";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageBody } from "@/components/layout/page-body";
+import { FilterBar } from "@/components/dashboard/filter-bar";
 import type { SessionUser } from "@/lib/auth-helpers";
 
-interface UserRow {
+interface AgencyUserRow {
   id: string;
   email: string;
-  role: string;
-  companyId: string | null;
+  role: "root" | "admin";
   isActive: boolean;
 }
 
 export function UsersClient({ user }: { user: SessionUser }) {
-  const [usersList, setUsersList] = useState<UserRow[]>([]);
+  const [usersList, setUsersList] = useState<AgencyUserRow[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [resetTarget, setResetTarget] = useState<AgencyUserRow | null>(null);
+  const [search, setSearch] = useState("");
+  const isRoot = user.role === "root";
 
   function fetchUsers() {
     fetch("/api/users")
@@ -33,9 +53,9 @@ export function UsersClient({ user }: { user: SessionUser }) {
       .then((data) => setUsersList(data.data ?? []));
   }
 
-  useEffect(() => {
+  useMountEffect(() => {
     fetchUsers();
-  }, []);
+  });
 
   async function toggleActive(userId: string, isActive: boolean) {
     await fetch(`/api/users/${userId}`, {
@@ -47,79 +67,155 @@ export function UsersClient({ user }: { user: SessionUser }) {
   }
 
   async function deleteUser(userId: string) {
-    if (!confirm("Are you sure you want to delete this user?")) return;
     await fetch(`/api/users/${userId}`, { method: "DELETE" });
     fetchUsers();
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      {user.role === "staff_admin" && user.companyId && (
-        <div className="flex justify-end">
-          <Button onClick={() => setShowCreate(true)}>Add User</Button>
-        </div>
-      )}
+  const filtered = useMemo(() => {
+    if (!search) return usersList;
+    const q = search.toLowerCase();
+    return usersList.filter(
+      (u) =>
+        u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q),
+    );
+  }, [usersList, search]);
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {usersList.length === 0 ? (
+  return (
+    <>
+      <PageHeader
+        title="Agency users"
+        subtitle="Internal team members managing the agency dashboard."
+        actions={
+          <Button onClick={() => setShowCreate(true)}>
+            <PlusIcon data-icon="inline-start" />
+            Add agency user
+          </Button>
+        }
+      />
+
+      <PageBody>
+        <FilterBar
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "Search by email or role…",
+          }}
+        />
+
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  No users found
-                </TableCell>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Active</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              usersList.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>{u.email}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{u.role}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={u.isActive}
-                      onCheckedChange={(checked) => toggleActive(u.id, checked)}
-                      disabled={u.role === "root"}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {u.role !== "root" && (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteUser(u.id)}
-                      >
-                        Delete
-                      </Button>
-                    )}
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="h-32 text-center text-sm text-muted-foreground"
+                  >
+                    No agency users found
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ) : (
+                filtered.map((u) => {
+                  const canMutate = isRoot && u.role !== "root";
+                  const canResetPassword =
+                    isRoot && (u.role === "admin" || u.id === user.id);
+                  return (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.email}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{u.role}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={u.isActive}
+                          onCheckedChange={(checked) =>
+                            toggleActive(u.id, checked)
+                          }
+                          disabled={!canMutate}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {canResetPassword && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setResetTarget(u)}
+                            >
+                              <KeyRoundIcon data-icon="inline-start" />
+                              Reset password
+                            </Button>
+                          )}
+                          {canMutate && (
+                            <AlertDialog>
+                              <AlertDialogTrigger
+                                render={
+                                  <Button variant="destructive" size="sm">
+                                    Delete
+                                  </Button>
+                                }
+                              />
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Delete user &ldquo;{u.email}&rdquo;?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete the user. This
+                                    action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    variant="destructive"
+                                    onClick={() => deleteUser(u.id)}
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-      {user.role === "staff_admin" && user.companyId && (
-        <CreateUserDialog
+        <CreateAgencyUserDialog
           open={showCreate}
           onOpenChange={setShowCreate}
-          companyId={user.companyId}
           onCreated={() => {
             setShowCreate(false);
             fetchUsers();
           }}
         />
-      )}
-    </div>
+
+        {resetTarget && (
+          <ResetAgencyPasswordDialog
+            open={resetTarget !== null}
+            target={resetTarget}
+            onOpenChange={(open) => {
+              if (!open) setResetTarget(null);
+            }}
+          />
+        )}
+      </PageBody>
+    </>
   );
 }

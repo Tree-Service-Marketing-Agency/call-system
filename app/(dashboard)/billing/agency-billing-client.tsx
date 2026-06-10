@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import Link from "next/link";
-import { Check, Eye, X } from "lucide-react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  AlertTriangleIcon,
+  CreditCardIcon,
+  ExternalLinkIcon,
+  Eye,
+  MoreHorizontalIcon,
+  PhoneCallIcon,
+  ZapIcon,
+  XIcon,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,11 +43,30 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar } from "@/components/ui/avatar";
+import { StatsGrid } from "@/components/dashboard/stats-grid";
+import { StatCard, type TrendDirection } from "@/components/dashboard/stat-card";
+import { FilterBar } from "@/components/dashboard/filter-bar";
+import { DataTablePagination } from "@/components/dashboard/data-table-pagination";
 
 interface CompanyRow {
   id: string;
   name: string;
   balanceCents: number;
+  pendingCallsCount: number;
   billingStatus: string;
   hasPaymentMethod: boolean;
   lastInvoice: {
@@ -68,13 +92,18 @@ interface InvoiceRow {
 
 interface GlobalBillingData {
   scope: "global";
-  thresholdCents: number;
+  thresholdCalls: number;
   pricePerCallCents: number;
   stats: {
     paidCentsThisMonth: number;
     paidCountThisMonth: number;
     failedCountThisMonth: number;
     uncollectibleCompanies: number;
+    deltas: {
+      paidCents: number | null;
+      paidCount: number | null;
+      failedCount: number | null;
+    };
   };
   companies: CompanyRow[];
   invoices: InvoiceRow[];
@@ -84,7 +113,11 @@ function usd(cents: number | null | undefined): string {
   return `$${((cents ?? 0) / 100).toFixed(2)}`;
 }
 
-function effectiveFeePct(thresholdCents: number): string {
+function effectiveFeePct(
+  thresholdCalls: number,
+  pricePerCallCents: number,
+): string {
+  const thresholdCents = thresholdCalls * pricePerCallCents;
   if (thresholdCents <= 0) return "—";
   const thresholdUsd = thresholdCents / 100;
   const cardFee = thresholdUsd * 0.029 + 0.3;
@@ -93,11 +126,37 @@ function effectiveFeePct(thresholdCents: number): string {
   return ((total / thresholdUsd) * 100).toFixed(1);
 }
 
+function parsePositiveInt(input: string): number | null {
+  const n = Number(input);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+function formatDelta(
+  delta: number | null,
+): { label: string; direction: TrendDirection } | null {
+  if (delta === null) return null;
+  const direction: TrendDirection =
+    delta > 0 ? "up" : delta < 0 ? "down" : "neutral";
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return {
+    label: `${sign}${Math.abs(delta).toFixed(0)}%`,
+    direction,
+  };
+}
+
+type BadgeVariant =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning";
+
 type StatusMeta = {
   label: string;
   description: string;
-  className?: string;
-  variant?: "destructive" | "secondary" | "outline";
+  variant: BadgeVariant;
 };
 
 const companyStatusMeta: Record<string, StatusMeta> = {
@@ -105,19 +164,19 @@ const companyStatusMeta: Record<string, StatusMeta> = {
     label: "Idle",
     description:
       "Company is up to date. No pending charges and balance has not reached the threshold.",
-    className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
+    variant: "success",
   },
   charging: {
     label: "Charging",
     description:
       "A charge is currently being processed in Stripe for this company.",
-    className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+    variant: "secondary",
   },
   payment_pending: {
     label: "Payment pending",
     description:
       "The last charge failed and Stripe is retrying with Smart Retries. May require updating the card.",
-    className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+    variant: "warning",
   },
   uncollectible: {
     label: "Uncollectible",
@@ -131,18 +190,18 @@ const invoiceStatusMeta: Record<string, StatusMeta> = {
   paid: {
     label: "Paid",
     description: "Invoice was charged successfully in Stripe.",
-    className: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
+    variant: "success",
   },
   pending: {
     label: "Pending",
     description: "Invoice issued but not yet confirmed as paid by Stripe.",
-    className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+    variant: "secondary",
   },
   failed: {
     label: "Failed",
     description:
       "The charge failed. Stripe is automatically retrying with Smart Retries.",
-    className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+    variant: "warning",
   },
   uncollectible: {
     label: "Uncollectible",
@@ -158,6 +217,14 @@ const invoiceStatusMeta: Record<string, StatusMeta> = {
   },
 };
 
+const COMPANY_STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "idle", label: "Idle" },
+  { value: "charging", label: "Charging" },
+  { value: "payment_pending", label: "Payment pending" },
+  { value: "uncollectible", label: "Uncollectible" },
+];
+
 function StatusBadge({
   status,
   meta,
@@ -165,56 +232,53 @@ function StatusBadge({
   status: string;
   meta: Record<string, StatusMeta>;
 }) {
-  const cfg = meta[status] ?? { label: status, description: status };
+  const cfg = meta[status] ?? {
+    label: status,
+    description: status,
+    variant: "outline" as const,
+  };
   return (
     <Tooltip>
       <TooltipTrigger
-        render={
-          <Badge className={cfg.className} variant={cfg.variant}>
-            {cfg.label}
-          </Badge>
-        }
+        render={<Badge variant={cfg.variant}>{cfg.label}</Badge>}
       />
       <TooltipContent side="top">{cfg.description}</TooltipContent>
     </Tooltip>
   );
 }
 
-interface Props {
-  role: "root" | "admin";
+interface ThresholdCardProps {
+  thresholdCalls: number;
+  pricePerCallCents: number;
+  isRoot: boolean;
+  onSaved: () => void;
 }
 
-export function AgencyBillingClient({ role }: Props) {
-  const [data, setData] = useState<GlobalBillingData | null>(null);
-  const [thresholdInput, setThresholdInput] = useState("");
-  const [savingThreshold, setSavingThreshold] = useState(false);
+function ThresholdCard({
+  thresholdCalls,
+  pricePerCallCents,
+  isRoot,
+  onSaved,
+}: ThresholdCardProps) {
+  const initial = String(thresholdCalls);
+  const [value, setValue] = useState(initial);
+  const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
-    fetch("/api/billing")
-      .then((r) => r.json())
-      .then((json: GlobalBillingData) => {
-        setData(json);
-        setThresholdInput((json.thresholdCents / 100).toFixed(2));
-      });
-  }, []);
+  const dirty = value !== initial;
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  async function saveThreshold() {
-    const cents = Math.round(Number(thresholdInput) * 100);
-    if (!Number.isFinite(cents) || cents < 0) return;
-    setSavingThreshold(true);
+  async function save() {
+    const calls = parsePositiveInt(value);
+    if (calls == null) return;
+    setSaving(true);
     await fetch("/api/business-model", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ billingThresholdCents: cents }),
+      body: JSON.stringify({ billingThresholdCalls: calls }),
     });
-    setSavingThreshold(false);
-    refresh();
+    setSaving(false);
+    onSaved();
   }
 
   async function runCron() {
@@ -224,284 +288,549 @@ export function AgencyBillingClient({ role }: Props) {
       const res = await fetch("/api/billing/run-cron", { method: "POST" });
       const json = await res.json();
       setRunResult(
-        `Processed: ${json.invoicesCreated ?? 0} invoices created, ${
-          json.invoicesFailed ?? 0
-        } failed, ${json.candidatesCount ?? 0} candidates.`
+        `${json.invoicesCreated ?? 0} invoices created, ${json.invoicesFailed ?? 0} failed, ${json.candidatesCount ?? 0} candidates.`,
       );
     } catch (err) {
-      setRunResult(
-        `Error: ${err instanceof Error ? err.message : "unknown"}`
-      );
+      setRunResult(`Error: ${err instanceof Error ? err.message : "unknown"}`);
     } finally {
       setRunning(false);
-      setTimeout(refresh, 500);
+      setTimeout(onSaved, 500);
     }
   }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <div className="border-b border-border px-5 py-4">
+        <div className="text-sm font-semibold tracking-tight">
+          Global settings
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Threshold-based billing for usage charges.
+        </div>
+      </div>
+      <div className="px-5 py-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="threshold">Billing threshold (calls)</Label>
+            <Input
+              id="threshold"
+              type="number"
+              step="1"
+              min="1"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={!isRoot}
+              className="w-36 font-mono tabular-nums"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Effective Stripe fee at this threshold: ~
+              {effectiveFeePct(Number(value || 0), pricePerCallCents)}%
+            </span>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {isRoot && dirty && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setValue(initial)}
+              >
+                Cancel
+              </Button>
+            )}
+            {isRoot && (
+              <Button
+                size="sm"
+                onClick={save}
+                disabled={!dirty || saving}
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+            )}
+            {isRoot && (
+              <AlertDialog>
+                <AlertDialogTrigger
+                  render={
+                    <Button variant="secondary" size="sm" disabled={running}>
+                      <ZapIcon data-icon="inline-start" />
+                      {running ? "Running…" : "Run billing now"}
+                    </Button>
+                  }
+                />
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Run the billing process now?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will process all eligible companies immediately, in
+                      addition to the daily 05:00 UTC cron.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={runCron}>
+                      Run
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
+        </div>
+        {runResult && (
+          <p className="mt-3 text-sm text-muted-foreground">{runResult}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface Props {
+  role: "root" | "admin";
+}
+
+export function AgencyBillingClient({ role }: Props) {
+  const [data, setData] = useState<GlobalBillingData | null>(null);
+
+  const [companySearch, setCompanySearch] = useState("");
+  const [companyStatus, setCompanyStatus] = useState<string>("all");
+  const [companyPage, setCompanyPage] = useState(1);
+  const [companyPageSize, setCompanyPageSize] = useState(10);
+
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState<string>("all");
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentPageSize, setPaymentPageSize] = useState(10);
+
+  const refresh = useCallback(() => {
+    fetch("/api/billing")
+      .then((r) => r.json())
+      .then((json: GlobalBillingData) => setData(json));
+  }, []);
+
+  useMountEffect(() => {
+    refresh();
+  });
+
+  const filteredCompanies = useMemo(() => {
+    if (!data) return [];
+    let rows = data.companies;
+    if (companyStatus !== "all") {
+      rows = rows.filter((c) => c.billingStatus === companyStatus);
+    }
+    if (companySearch) {
+      const q = companySearch.toLowerCase();
+      rows = rows.filter((c) => c.name.toLowerCase().includes(q));
+    }
+    return rows;
+  }, [data, companySearch, companyStatus]);
+
+  const filteredInvoices = useMemo(() => {
+    if (!data) return [];
+    let rows = data.invoices;
+    if (paymentStatus !== "all") {
+      rows = rows.filter((p) => p.status === paymentStatus);
+    }
+    if (paymentSearch) {
+      const q = paymentSearch.toLowerCase();
+      rows = rows.filter(
+        (p) =>
+          p.companyName?.toLowerCase().includes(q) ||
+          p.stripeInvoiceId?.toLowerCase().includes(q),
+      );
+    }
+    return rows;
+  }, [data, paymentSearch, paymentStatus]);
+
+  const companyTotal = filteredCompanies.length;
+  const companyStart = (companyPage - 1) * companyPageSize;
+  const companyPageRows = filteredCompanies.slice(
+    companyStart,
+    companyStart + companyPageSize,
+  );
+
+  const paymentTotal = filteredInvoices.length;
+  const paymentStart = (paymentPage - 1) * paymentPageSize;
+  const paymentPageRows = filteredInvoices.slice(
+    paymentStart,
+    paymentStart + paymentPageSize,
+  );
 
   if (!data) {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
+  const noCardCount = data.companies.filter(
+    (c) => !c.hasPaymentMethod && c.billingStatus !== "idle",
+  ).length;
+  const needsAttention = data.companies.filter(
+    (c) => c.billingStatus === "uncollectible" || !c.hasPaymentMethod,
+  ).length;
+
+  const paidDelta = formatDelta(data.stats.deltas.paidCents);
+  const paidCountDelta = formatDelta(data.stats.deltas.paidCount);
+  const failedDelta = formatDelta(data.stats.deltas.failedCount);
+
   return (
     <TooltipProvider>
-    <div className="flex flex-col gap-6">
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Charged this month
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {usd(data.stats.paidCentsThisMonth)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Invoices paid
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {data.stats.paidCountThisMonth}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Invoices failed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {data.stats.failedCountThisMonth}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Uncollectible
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {data.stats.uncollectibleCompanies}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatsGrid>
+        <StatCard
+          label="Charged this month"
+          value={usd(data.stats.paidCentsThisMonth)}
+          trend={paidDelta?.label}
+          trendDirection={paidDelta?.direction}
+          comparison={paidDelta ? "vs last month" : undefined}
+        />
+        <StatCard
+          label="Invoices paid"
+          value={data.stats.paidCountThisMonth.toLocaleString()}
+          trend={paidCountDelta?.label}
+          trendDirection={paidCountDelta?.direction}
+          comparison={paidCountDelta ? "vs last month" : undefined}
+        />
+        <StatCard
+          label="Invoices failed"
+          value={data.stats.failedCountThisMonth.toLocaleString()}
+          trend={failedDelta?.label}
+          trendDirection={
+            failedDelta
+              ? failedDelta.direction === "up"
+                ? "down"
+                : failedDelta.direction === "down"
+                  ? "up"
+                  : "neutral"
+              : "neutral"
+          }
+          comparison={failedDelta ? "vs last month" : undefined}
+        />
+        <StatCard
+          label="Uncollectible"
+          value={data.stats.uncollectibleCompanies.toLocaleString()}
+        />
+      </StatsGrid>
 
-      {/* Root config panel */}
-      {role === "root" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Global settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-4 md:flex-row md:items-end">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="threshold">Billing threshold ($)</Label>
-                <Input
-                  id="threshold"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={thresholdInput}
-                  onChange={(e) => setThresholdInput(e.target.value)}
-                  className="w-32"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Effective Stripe fee at this threshold: ~
-                  {effectiveFeePct(
-                    Math.round(Number(thresholdInput || 0) * 100)
-                  )}
-                  %
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={saveThreshold} disabled={savingThreshold}>
-                  {savingThreshold ? "Saving…" : "Save"}
-                </Button>
-                <AlertDialog>
-                  <AlertDialogTrigger
-                    render={
-                      <Button variant="outline" disabled={running}>
-                        {running ? "Running…" : "Run billing now"}
-                      </Button>
-                    }
-                  />
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        Run the billing process now?
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will process all eligible companies immediately,
-                        in addition to the daily 05:00 UTC cron.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={runCron}>
-                        Run
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </div>
-            {runResult && (
-              <p className="mt-3 text-sm text-muted-foreground">{runResult}</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <ThresholdCard
+        key={data.thresholdCalls}
+        thresholdCalls={data.thresholdCalls}
+        pricePerCallCents={data.pricePerCallCents}
+        isRoot={role === "root"}
+        onSaved={refresh}
+      />
 
       {/* Companies table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Companies</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div>
+            <div className="text-sm font-semibold tracking-tight">
+              Companies
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {data.companies.length.toLocaleString()} companies
+              {needsAttention > 0
+                ? ` · ${needsAttention} need${needsAttention === 1 ? "s" : ""} attention`
+                : ""}
+              {noCardCount > 0 ? ` · ${noCardCount} without card` : ""}
+            </div>
+          </div>
+          <FilterBar
+            className="w-auto"
+            search={{
+              value: companySearch,
+              onChange: (v) => {
+                setCompanySearch(v);
+                setCompanyPage(1);
+              },
+              placeholder: "Search companies…",
+            }}
+            filters={
+              <Select
+                value={companyStatus}
+                onValueChange={(v) => {
+                  setCompanyStatus(v ?? "all");
+                  setCompanyPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[160px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMPANY_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Company</TableHead>
+              <TableHead className="text-right">Pending calls</TableHead>
+              <TableHead className="text-right">Balance</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Last invoice</TableHead>
+              <TableHead>Card</TableHead>
+              <TableHead className="w-[60px] text-right" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {companyPageRows.length === 0 ? (
               <TableRow>
-                <TableHead>Company</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last invoice</TableHead>
-                <TableHead>Card</TableHead>
-                <TableHead className="w-[80px] text-right">Actions</TableHead>
+                <TableCell
+                  colSpan={7}
+                  className="h-32 text-center text-sm text-muted-foreground"
+                >
+                  No companies found
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.companies.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center text-muted-foreground"
-                  >
-                    No companies registered
-                  </TableCell>
-                </TableRow>
-              ) : (
-                data.companies.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell>{usd(c.balanceCents)}</TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        status={c.billingStatus}
-                        meta={companyStatusMeta}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {c.lastInvoice ? (
-                        <span className="text-sm">
-                          {new Date(c.lastInvoice.createdAt).toLocaleDateString()}{" "}
-                          · {usd(c.lastInvoice.amountCents)} ·{" "}
-                          {c.lastInvoice.status}
+            ) : (
+              companyPageRows.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={c.name} size="sm" />
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="font-medium leading-tight">
+                          {c.name}
                         </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {c.hasPaymentMethod ? (
-                        <Check className="size-4 text-emerald-600" aria-label="Card on file" />
-                      ) : (
-                        <X className="size-4 text-red-600" aria-label="No card" />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/companies/${c.id}`}>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`View ${c.name}`}
-                        >
-                          <Eye />
-                        </Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Global invoice history */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Global payment history</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Attempts</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.invoices.length === 0 ? (
-                <TableRow>
+                        {!c.hasPaymentMethod &&
+                          c.billingStatus !== "idle" && (
+                            <span className="flex items-center gap-1 text-[11px] text-destructive">
+                              <AlertTriangleIcon className="size-2.5" />
+                              No card on file
+                            </span>
+                          )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <span
+                      className={
+                        c.pendingCallsCount >= data.thresholdCalls
+                          ? "font-medium text-amber-700"
+                          : ""
+                      }
+                    >
+                      {c.pendingCallsCount} / {data.thresholdCalls}
+                    </span>
+                  </TableCell>
                   <TableCell
-                    colSpan={6}
-                    className="text-center text-muted-foreground"
+                    className={`text-right tabular-nums ${
+                      c.balanceCents > 0 ? "font-medium" : ""
+                    }`}
                   >
-                    No payments recorded
+                    {usd(c.balanceCents)}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge
+                      status={c.billingStatus}
+                      meta={companyStatusMeta}
+                    />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {c.lastInvoice ? (
+                      <span>
+                        {new Date(c.lastInvoice.createdAt).toLocaleDateString(
+                          undefined,
+                          { month: "short", day: "numeric" },
+                        )}
+                        {c.lastInvoice.amountCents != null && (
+                          <span className="text-muted-foreground-2">
+                            {" "}· {usd(c.lastInvoice.amountCents)}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {c.hasPaymentMethod ? (
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-foreground">
+                        <CreditCardIcon className="size-3.5 text-primary" />
+                        On file
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-destructive">
+                        <XIcon className="size-3.5" />
+                        Missing
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Link href={`/companies/${c.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`View ${c.name}`}
+                      >
+                        <Eye />
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
-              ) : (
-                data.invoices.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>
-                      {new Date(inv.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>{inv.companyName ?? "—"}</TableCell>
-                    <TableCell>{usd(inv.amountCents)}</TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        status={inv.status}
-                        meta={invoiceStatusMeta}
-                      />
-                    </TableCell>
-                    <TableCell>{inv.attemptCount}</TableCell>
-                    <TableCell className="text-right">
-                      {inv.hostedInvoiceUrl ? (
-                        <a
-                          href={inv.hostedInvoiceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-600 underline"
-                        >
-                          View
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        <DataTablePagination
+          page={companyPage}
+          pageSize={companyPageSize}
+          total={companyTotal}
+          itemLabel="companies"
+          onPageChange={setCompanyPage}
+          onPageSizeChange={(size) => {
+            setCompanyPageSize(size);
+            setCompanyPage(1);
+          }}
+        />
+      </div>
+
+      {/* Global payment history */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div>
+            <div className="text-sm font-semibold tracking-tight">
+              Global payment history
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {data.invoices.length.toLocaleString()} payments across all
+              companies
+            </div>
+          </div>
+          <FilterBar
+            className="w-auto"
+            search={{
+              value: paymentSearch,
+              onChange: (v) => {
+                setPaymentSearch(v);
+                setPaymentPage(1);
+              },
+              placeholder: "Search payments…",
+            }}
+            filters={
+              <Select
+                value={paymentStatus}
+                onValueChange={(v) => {
+                  setPaymentStatus(v ?? "all");
+                  setPaymentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="uncollectible">Uncollectible</SelectItem>
+                </SelectContent>
+              </Select>
+            }
+          />
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Company</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Attempts</TableHead>
+              <TableHead className="w-[60px] text-right" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paymentPageRows.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={6}
+                  className="h-32 text-center text-sm text-muted-foreground"
+                >
+                  No payments recorded
+                </TableCell>
+              </TableRow>
+            ) : (
+              paymentPageRows.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell className="tabular-nums text-muted-foreground">
+                    {new Date(inv.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>{inv.companyName ?? "—"}</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    {usd(inv.amountCents)}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge
+                      status={inv.status}
+                      meta={invoiceStatusMeta}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {inv.attemptCount}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {inv.status === "creation_failed" ? null : (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Invoice actions"
+                            >
+                              <MoreHorizontalIcon />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            render={
+                              <Link href={`/billing/invoices/${inv.id}/calls`}>
+                                <PhoneCallIcon />
+                                View related calls
+                              </Link>
+                            }
+                          />
+                          {inv.hostedInvoiceUrl && (
+                            <DropdownMenuItem
+                              render={
+                                <a
+                                  href={inv.hostedInvoiceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <ExternalLinkIcon />
+                                  Open in Stripe
+                                </a>
+                              }
+                            />
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+        <DataTablePagination
+          page={paymentPage}
+          pageSize={paymentPageSize}
+          total={paymentTotal}
+          itemLabel="payments"
+          onPageChange={setPaymentPage}
+          onPageSizeChange={(size) => {
+            setPaymentPageSize(size);
+            setPaymentPage(1);
+          }}
+        />
+      </div>
     </TooltipProvider>
   );
 }

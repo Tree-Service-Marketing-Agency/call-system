@@ -1,17 +1,9 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { Agentation } from "agentation";
+import { Toaster } from "sonner";
 import "./globals.css";
-
-const fontSans = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const fontMono = JetBrains_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Lola",
@@ -26,10 +18,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fontSans.variable} ${fontMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col font-sans">
         {children}
+        <Toaster richColors position="bottom-right" />
         {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>

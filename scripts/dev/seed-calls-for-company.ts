@@ -1,12 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../lib/db";
 import { insertCallChargeLedgerEntry } from "../../lib/billing/ledger";
-import {
-  calls,
-  companies,
-  companyAgents,
-  businessConfig,
-} from "../../lib/db/schema";
+import { calls, companies, retellNumbers } from "../../lib/db/schema";
 
 type Options = {
   companyId: string;
@@ -27,7 +22,7 @@ Env:
   (Node >= 20.6) or export the variable manually before running.
 
 Notes:
-  - Reuses the first agent already linked to the company in company_agents.
+  - Reuses the first agent already linked to the company in retell_numbers.
   - Reads price per call from business_config.price_per_call_cents.
   - Bumps companies.current_balance_cents by calls * price.
   - Does NOT run the billing charge. Trigger it afterwards via the
@@ -85,12 +80,12 @@ async function main() {
     throw new Error(`Company not found: ${options.companyId}`);
   }
 
-  const agentLink = await db.query.companyAgents.findFirst({
-    where: eq(companyAgents.companyId, options.companyId),
+  const agentLink = await db.query.retellNumbers.findFirst({
+    where: eq(retellNumbers.companyId, options.companyId),
   });
   if (!agentLink) {
     throw new Error(
-      `Company ${options.companyId} has no agents in company_agents. ` +
+      `Company ${options.companyId} has no agents in retell_numbers. ` +
         `Link an agent before seeding calls.`
     );
   }
@@ -103,10 +98,9 @@ async function main() {
     );
   }
   const priceCents = config.pricePerCallCents;
-  const thresholdCents = config.billingThresholdCents;
+  const thresholdCalls = config.billingThresholdCalls;
   const totalCents = priceCents * options.calls;
   const newBalanceCents = company.currentBalanceCents + totalCents;
-  const crossesThreshold = newBalanceCents >= thresholdCents;
 
   const createdCallIds: Array<{ rowId: string; callId: string }> = [];
 
@@ -142,8 +136,6 @@ async function main() {
           retellCost: JSON.stringify({ total_cost: "0.01", currency: "usd" }),
           billingPriceCents: priceCents,
           billingCountedAt: endedAt,
-          webhook1Received: true,
-          webhook2Received: true,
           createdAt: startedAt,
           updatedAt: endedAt,
         })
@@ -184,8 +176,8 @@ async function main() {
         totalAddedCents: totalCents,
         previousBalanceCents: company.currentBalanceCents,
         newBalanceCents,
-        thresholdCents,
-        crossesThreshold,
+        thresholdCalls,
+        addedCallCount: options.calls,
         callRowIds: createdCallIds.map((c) => c.rowId),
         callIds: createdCallIds.map((c) => c.callId),
       },
@@ -193,14 +185,6 @@ async function main() {
       2
     )
   );
-
-  if (!crossesThreshold) {
-    console.log(
-      `\nWarning: new balance (${newBalanceCents}¢) is below threshold ` +
-        `(${thresholdCents}¢). The charge cron will skip this company until ` +
-        `the balance crosses the threshold.`
-    );
-  }
   if (!company.stripeCustomerId || !company.stripePaymentMethodId) {
     console.log(
       "\nWarning: company is missing Stripe IDs. Attach a Stripe customer + " +

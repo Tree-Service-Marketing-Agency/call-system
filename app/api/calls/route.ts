@@ -1,8 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, desc, count, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { calls, companies, billingLedger } from "@/lib/db/schema";
+import { billingLedger, calls, companies, invoices } from "@/lib/db/schema";
 import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
+import {
+  INVOICE_CALLS_PAGE_SIZE,
+  getCallsForInvoice,
+} from "@/lib/billing/invoice-calls";
+
+const BILLING_FILTER_TO_STATUSES = {
+  pending: ["pending", "reserved"],
+  charged: ["paid"],
+  "non-billable": ["void"],
+} as const;
+
+type BillingFilter = keyof typeof BILLING_FILTER_TO_STATUSES;
+type LedgerStatusValue =
+  (typeof BILLING_FILTER_TO_STATUSES)[BillingFilter][number];
+
+function isBillingFilter(value: string): value is BillingFilter {
+  return value in BILLING_FILTER_TO_STATUSES;
+}
+
+function parseList(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
 
 const PAGE_SIZE = 15;
 
@@ -14,44 +40,109 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get("page") ?? "1");
-  const companyFilter = searchParams.get("companyId");
+  const companyId = searchParams.get("companyId")?.trim() || null;
+  const invoiceId = searchParams.get("invoiceId")?.trim() || null;
+  const billingValues = parseList(searchParams.get("billing")).filter(
+    isBillingFilter,
+  );
   const offset = (page - 1) * PAGE_SIZE;
 
-  const conditions = [];
+  if (invoiceId) {
+    // Staff (read-only) cannot reach this view, matching /billing gating.
+    if (user.role === "staff") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // staff_admin: gate by their own company.
+    if (!isAgencyRole(user.role)) {
+      if (!user.companyId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const [invoice] = await db
+        .select({ companyId: invoices.companyId })
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .limit(1);
+      if (!invoice || invoice.companyId !== user.companyId) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+
+    const result = await getCallsForInvoice({
+      invoiceId,
+      page,
+      pageSize: INVOICE_CALLS_PAGE_SIZE,
+    });
+
+    const isAgency = isAgencyRole(user.role);
+    return NextResponse.json({
+      // ADR-003: strip retell cost for company users so it never reaches the
+      // wire. Reuse the same shape /api/calls already returns.
+      data: result.data.map(({ retellCost, ...rest }) =>
+        isAgency ? { ...rest, retellCost } : rest,
+      ),
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+    });
+  }
+
+  const conditions: SQL[] = [];
 
   if (isAgencyRole(user.role)) {
-    if (companyFilter) {
-      conditions.push(eq(calls.companyId, companyFilter));
+    if (companyId) {
+      conditions.push(eq(calls.companyId, companyId));
     }
   } else {
     if (!user.companyId) {
-      return NextResponse.json({ data: [], total: 0, page, pageSize: PAGE_SIZE });
+      return NextResponse.json({
+        data: [],
+        total: 0,
+        page,
+        pageSize: PAGE_SIZE,
+      });
     }
     conditions.push(eq(calls.companyId, user.companyId));
   }
 
-  const where = conditions.length > 0
-    ? sql`${sql.join(conditions.map(c => sql`${c}`), sql` AND `)}`
-    : undefined;
+  if (billingValues.length > 0) {
+    const ledgerStatuses = Array.from(
+      new Set(
+        billingValues.flatMap(
+          (v) => BILLING_FILTER_TO_STATUSES[v] as readonly LedgerStatusValue[],
+        ),
+      ),
+    );
+    conditions.push(inArray(billingLedger.status, ledgerStatuses));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const isAgency = isAgencyRole(user.role);
+
+  // ADR-003: retell_cost is agency-only. Field is excluded from SELECT for
+  // staff/staff_admin so it never reaches the wire.
+  const baseSelection = {
+    id: calls.id,
+    callId: calls.callId,
+    customerName: calls.customerName,
+    customerPhone: calls.customerPhone,
+    callStatus: calls.callStatus,
+    durationMs: calls.durationMs,
+    callDate: calls.callDate,
+    createdAt: calls.createdAt,
+    audioUrl: calls.audioUrl,
+    companyId: calls.companyId,
+    companyName: companies.name,
+    ledgerStatus: billingLedger.status,
+  };
+  const selection = isAgency
+    ? { ...baseSelection, retellCost: calls.retellCost }
+    : baseSelection;
 
   const [data, totalResult] = await Promise.all([
     db
-      .select({
-        id: calls.id,
-        callId: calls.callId,
-        customerName: calls.customerName,
-        customerPhone: calls.customerPhone,
-        callStatus: calls.callStatus,
-        durationMs: calls.durationMs,
-        callDate: calls.callDate,
-        createdAt: calls.createdAt,
-        audioUrl: calls.audioUrl,
-        companyId: calls.companyId,
-        companyName: companies.name,
-        webhook1Received: calls.webhook1Received,
-        webhook2Received: calls.webhook2Received,
-        ledgerStatus: billingLedger.status,
-      })
+      .select(selection)
       .from(calls)
       .leftJoin(companies, eq(calls.companyId, companies.id))
       .leftJoin(billingLedger, eq(billingLedger.callRowId, calls.id))
@@ -60,8 +151,9 @@ export async function GET(request: NextRequest) {
       .limit(PAGE_SIZE)
       .offset(offset),
     db
-      .select({ count: count() })
+      .select({ count: sql<number>`count(*)::int` })
       .from(calls)
+      .leftJoin(billingLedger, eq(billingLedger.callRowId, calls.id))
       .where(where),
   ]);
 

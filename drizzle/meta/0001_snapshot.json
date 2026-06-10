@@ -1,5 +1,5 @@
 {
-  "id": "47d719fd-6017-4020-8738-1e9a3a1b7690",
+  "id": "34c0fa6c-b314-4792-9e8f-12dda3c29638",
   "prevId": "9285511e-4950-40ad-ae69-7458abb37192",
   "version": "7",
   "dialect": "postgresql",
@@ -55,18 +55,6 @@
         },
         "invoice_id": {
           "name": "invoice_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "voided_at": {
-          "name": "voided_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "voided_by": {
-          "name": "voided_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -184,19 +172,6 @@
           "tableTo": "invoices",
           "columnsFrom": [
             "invoice_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "billing_ledger_voided_by_users_id_fk": {
-          "name": "billing_ledger_voided_by_users_id_fk",
-          "tableFrom": "billing_ledger",
-          "tableTo": "users",
-          "columnsFrom": [
-            "voided_by"
           ],
           "columnsTo": [
             "id"
@@ -572,6 +547,19 @@
         "last_no_payment_warning_at": {
           "name": "last_no_payment_warning_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_phones": {
+          "name": "notification_phones",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "ARRAY[]::text[]"
+        },
+        "lead_snap_webhook": {
+          "name": "lead_snap_webhook",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -985,8 +973,7 @@
       "values": [
         "pending",
         "reserved",
-        "paid",
-        "void"
+        "paid"
       ]
     },
     "public.user_role": {

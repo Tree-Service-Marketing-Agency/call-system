@@ -10,10 +10,5 @@ export default async function CompaniesPage() {
     redirect("/calls");
   }
 
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <h1 className="text-2xl font-bold">Companies</h1>
-      <CompaniesClient />
-    </div>
-  );
+  return <CompaniesClient />;
 }

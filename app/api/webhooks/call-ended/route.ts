@@ -1,89 +1,51 @@
 import { NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
-import Retell from "retell-sdk";
 import { db } from "@/lib/db";
-import { calls, companyAgents, companies } from "@/lib/db/schema";
-import { insertCallChargeLedgerEntry } from "@/lib/billing/ledger";
+import { calls, retellNumbers, companies } from "@/lib/db/schema";
+import {
+  insertCallChargeLedgerEntry,
+  insertVoidedCallChargeLedgerEntry,
+} from "@/lib/billing/ledger";
+import { isBillableDisconnection } from "@/lib/billing/rules";
+import { resolveBillingOutcome } from "@/lib/billing/resolve-billing-outcome";
+import { verifyN8nSecret } from "@/lib/webhook-auth";
+import { mapCallEndedPayload } from "@/lib/calls/map-call-ended-payload";
+import { buildPublicRecordingLink } from "@/lib/public-recording-link";
 
+// ADR-004/006: payload comes from n8n (Retell → n8n → Lola). Auth is a shared
+// bearer secret. Since ADR-006, call_ended is the single ingestion webhook:
+// it carries customer data, metadata, and transcript in one event.
 export async function POST(request: Request) {
-  // 1. Read raw body BEFORE parsing — re-serializing changes whitespace and
-  // breaks signature verification.
-  const rawBody = await request.text();
+  const authError = verifyN8nSecret(request);
+  if (authError) return authError;
 
-  // 2. Verify Retell signature using the SDK with the raw body.
-  const apiKey = process.env.RETELL_API_KEY;
-  const signature = request.headers.get("x-retell-signature");
-
-  if (!apiKey) {
-    console.error(
-      "[call-ended] RETELL_API_KEY is not configured; rejecting webhook"
-    );
-    return NextResponse.json(
-      { error: "Server not configured" },
-      { status: 500 }
-    );
-  }
-
-  if (!signature) {
-    console.warn("[call-ended] missing x-retell-signature header");
-    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
-  }
-
-  let valid = false;
+  let payload: unknown;
   try {
-    valid = await Retell.verify(rawBody, apiKey, signature);
-  } catch (err) {
-    console.warn(
-      "[call-ended] signature verification threw",
-      err instanceof Error ? err.message : err
-    );
-    valid = false;
-  }
-  if (!valid) {
-    console.warn(
-      "[call-ended] invalid signature",
-      JSON.stringify({ signature_present: true })
-    );
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
-
-  // 3. Parse JSON only after signature passes.
-  let payload: Record<string, unknown>;
-  try {
-    payload = JSON.parse(rawBody);
+    payload = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  console.log(payload)
 
-  const event = (payload.event as string | undefined) ?? null;
+  // ADR-004 #4 (kept by ADR-006): n8n unwraps Retell's `[{...}]` array before
+  // sending. Lola only accepts a flat object; arrays are rejected with 400.
+  if (Array.isArray(payload)) {
+    return NextResponse.json(
+      { error: "expected object, got array" },
+      { status: 400 }
+    );
+  }
+  if (!payload || typeof payload !== "object") {
+    return NextResponse.json({ error: "expected object" }, { status: 400 });
+  }
+  const callObj = payload as Record<string, unknown>;
+
+  const event = (callObj.event as string | undefined) ?? null;
   if (event !== "call_ended") {
     return new NextResponse(null, { status: 204 });
   }
 
-  // Retell wraps the call in payload.call (per their docs); fall back to the
-  // top level for older payloads.
-  const callObj =
-    (payload.call as Record<string, unknown> | undefined) ?? payload;
-
   const call_id = callObj.call_id as string | undefined;
   const agent_id = callObj.agent_id as string | undefined;
-  const call_status = callObj.call_status as string | undefined;
-  const disconnection_reason = callObj.disconnection_reason as
-    | string
-    | undefined;
-  const start_timestamp = callObj.start_timestamp as number | undefined;
-  const end_timestamp = callObj.end_timestamp as number | undefined;
-  const duration_ms = callObj.duration_ms as number | undefined;
-  const audio_url = (callObj.recording_url ?? callObj.audio_url) as
-    | string
-    | undefined;
-  const call_cost = callObj.call_cost
-    ? JSON.stringify(callObj.call_cost)
-    : null;
-  const customerPhoneFromWebhook =
-    (callObj.from_number as string | undefined) ?? null;
-
   if (!call_id || !agent_id) {
     return NextResponse.json(
       { error: "call_id and agent_id are required" },
@@ -91,13 +53,13 @@ export async function POST(request: Request) {
     );
   }
 
-  // 4. Resolve company by agent.
-  const agent = await db.query.companyAgents.findFirst({
-    where: eq(companyAgents.agentId, agent_id),
+  const mapped = mapCallEndedPayload(callObj);
+
+  const agent = await db.query.retellNumbers.findFirst({
+    where: eq(retellNumbers.agentId, agent_id),
   });
   const companyId = agent?.companyId ?? null;
 
-  // 5. Always upsert the call row, even if not billable.
   const existing = await db.query.calls.findFirst({
     where: and(eq(calls.callId, call_id), eq(calls.agentId, agent_id)),
   });
@@ -107,19 +69,38 @@ export async function POST(request: Request) {
     await db
       .update(calls)
       .set({
-        event,
+        event: mapped.event ?? event,
         retellEvent: "call_ended",
-        callStatus: call_status ?? null,
-        disconnectionReason: disconnection_reason ?? null,
-        startTimestamp: start_timestamp ?? null,
-        endTimestamp: end_timestamp ?? null,
-        durationMs: duration_ms ?? null,
-        audioUrl: audio_url ?? null,
-        retellCost: call_cost,
+        callStatus: mapped.callStatus,
+        disconnectionReason: mapped.disconnectionReason,
+        startTimestamp: mapped.startTimestamp,
+        endTimestamp: mapped.endTimestamp,
+        durationMs: mapped.durationMs,
+        audioUrl: mapped.audioUrl,
+        retellCost: mapped.retellCost,
         companyId: companyId ?? existing.companyId,
-        // Only fill the phone if call-data hasn't already populated it.
-        customerPhone: existing.customerPhone ?? customerPhoneFromWebhook,
-        webhook2Received: true,
+        // ADR-004 #6 (kept by ADR-006): the "don't overwrite if already
+        // populated" rule now guards against n8n reprocess/retry and future
+        // manual edits. Only fill when the existing column is null/blank.
+        customerName: hasValue(existing.customerName)
+          ? existing.customerName
+          : mapped.customerName,
+        customerPhone: hasValue(existing.customerPhone)
+          ? existing.customerPhone
+          : mapped.customerPhone,
+        summary: hasValue(existing.summary)
+          ? existing.summary
+          : mapped.summary,
+        // Remaining customer fields: keep prior value when the payload omits
+        // it so a partial retry can't wipe good data.
+        customerAddress: mapped.customerAddress ?? existing.customerAddress,
+        customerCity: mapped.customerCity ?? existing.customerCity,
+        customerZipcode: mapped.customerZipcode ?? existing.customerZipcode,
+        service: mapped.service ?? existing.service,
+        callDate: mapped.callDate ?? existing.callDate,
+        // Transcript always takes the fresh version when the payload brings
+        // a non-empty array; otherwise keep the previous value.
+        transcript: mapped.transcript ?? existing.transcript,
         updatedAt: new Date(),
       })
       .where(eq(calls.id, existing.id));
@@ -131,47 +112,115 @@ export async function POST(request: Request) {
         callId: call_id,
         agentId: agent_id,
         companyId,
-        event,
+        event: mapped.event ?? event,
         retellEvent: "call_ended",
-        callStatus: call_status ?? null,
-        disconnectionReason: disconnection_reason ?? null,
-        startTimestamp: start_timestamp ?? null,
-        endTimestamp: end_timestamp ?? null,
-        durationMs: duration_ms ?? null,
-        audioUrl: audio_url ?? null,
-        retellCost: call_cost,
-        customerPhone: customerPhoneFromWebhook,
-        webhook1Received: false,
-        webhook2Received: true,
+        callStatus: mapped.callStatus,
+        disconnectionReason: mapped.disconnectionReason,
+        startTimestamp: mapped.startTimestamp,
+        endTimestamp: mapped.endTimestamp,
+        durationMs: mapped.durationMs,
+        audioUrl: mapped.audioUrl,
+        retellCost: mapped.retellCost,
+        customerName: mapped.customerName,
+        customerPhone: mapped.customerPhone,
+        customerAddress: mapped.customerAddress,
+        customerCity: mapped.customerCity,
+        customerZipcode: mapped.customerZipcode,
+        service: mapped.service,
+        summary: mapped.summary,
+        callDate: mapped.callDate,
+        transcript: mapped.transcript,
       })
       .returning({ id: calls.id });
     callRowId = inserted[0].id;
   }
 
-  // 6. Billable filter.
-  if (disconnection_reason !== "user_hangup") {
-    console.log(
-      "[call-ended] non-billable disconnection",
-      JSON.stringify({
-        call_id,
-        disconnection_reason: disconnection_reason ?? null,
-      })
-    );
-    return new NextResponse(null, { status: 204 });
-  }
-
-  if (!companyId) {
-    console.warn(
-      "[call-ended] billable call but no company resolved",
-      JSON.stringify({ call_id, agent_id })
-    );
-    return new NextResponse(null, { status: 204 });
-  }
-
-  // 7. Resolve current price and write the ledger entry.
   const config = await db.query.businessConfig.findFirst();
   const priceCents = config?.pricePerCallCents ?? 100;
+  const minBillableSeconds = config?.minBillableDurationSeconds ?? 20;
 
+  // ADR-007: a single deep resolver owns the full billing precedence.
+  const outcome = resolveBillingOutcome({
+    disconnectionReason: mapped.disconnectionReason,
+    companyId,
+    durationMs: mapped.durationMs,
+    minBillableSeconds,
+  });
+
+  // 'no_ledger' → no Ledger entry, Billing cell stays `—` (existing behaviour).
+  // Two distinct causes are logged separately for auditing, as before.
+  if (outcome === "no_ledger") {
+    if (!isBillableDisconnection(mapped.disconnectionReason)) {
+      console.log(
+        "[call-ended] non-billable disconnection",
+        JSON.stringify({
+          call_id,
+          disconnection_reason: mapped.disconnectionReason,
+        })
+      );
+    } else {
+      console.warn(
+        "[call-ended] billable call but no company resolved",
+        JSON.stringify({ call_id, agent_id })
+      );
+    }
+    // ADR-009: return the Public recording link so n8n can distribute it.
+    return NextResponse.json(
+      { id: callRowId, url: buildPublicRecordingLink(callRowId) },
+      { status: 200 },
+    );
+  }
+
+  // companyId is non-null past this point (resolver returned 'no_ledger' otherwise).
+  const resolvedCompanyId = companyId as string;
+
+  // 'void' → ADR-007 auto short-call exclusion: insert the Ledger entry
+  // directly as `void`. Snapshot billing_price_cents (so a later Restore
+  // knows what it would have charged) but never touch balance nor
+  // billing_counted_at.
+  if (outcome === "void") {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(calls)
+        .set({ billingPriceCents: priceCents, updatedAt: new Date() })
+        .where(eq(calls.id, callRowId));
+
+      const { inserted } = await insertVoidedCallChargeLedgerEntry(tx, {
+        companyId: resolvedCompanyId,
+        callId: call_id,
+        callRowId,
+        amountCents: priceCents,
+      });
+
+      if (!inserted) {
+        console.log(
+          "[call-ended] ledger_duplicate_ignored",
+          JSON.stringify({ call_id })
+        );
+        return;
+      }
+
+      console.log(
+        "[call-ended] auto_voided_short_call",
+        JSON.stringify({
+          call_id,
+          company_id: resolvedCompanyId,
+          duration_ms: mapped.durationMs,
+          min_billable_seconds: minBillableSeconds,
+          amount_cents: priceCents,
+        })
+      );
+    });
+
+    // ADR-009: return the Public recording link so n8n can distribute it.
+    return NextResponse.json(
+      { id: callRowId, url: buildPublicRecordingLink(callRowId) },
+      { status: 200 },
+    );
+  }
+
+  // 'pending' → normal billable flow (unchanged): insert pending, +balance,
+  // billing_counted_at.
   await db.transaction(async (tx) => {
     await tx
       .update(calls)
@@ -182,7 +231,7 @@ export async function POST(request: Request) {
       .where(eq(calls.id, callRowId));
 
     const { inserted } = await insertCallChargeLedgerEntry(tx, {
-      companyId,
+      companyId: resolvedCompanyId,
       callId: call_id,
       callRowId,
       amountCents: priceCents,
@@ -203,7 +252,7 @@ export async function POST(request: Request) {
         billingUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(companies.id, companyId));
+      .where(eq(companies.id, resolvedCompanyId));
 
     await tx
       .update(calls)
@@ -212,9 +261,21 @@ export async function POST(request: Request) {
 
     console.log(
       "[call-ended] ledger_inserted",
-      JSON.stringify({ call_id, company_id: companyId, amount_cents: priceCents })
+      JSON.stringify({
+        call_id,
+        company_id: resolvedCompanyId,
+        amount_cents: priceCents,
+      })
     );
   });
 
-  return new NextResponse(null, { status: 204 });
+  // ADR-009: return the Public recording link so n8n can distribute it.
+  return NextResponse.json(
+    { id: callRowId, url: buildPublicRecordingLink(callRowId) },
+    { status: 200 },
+  );
+}
+
+function hasValue(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }

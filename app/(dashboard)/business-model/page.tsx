@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageBody } from "@/components/layout/page-body";
 import { BusinessModelClient } from "./business-model-client";
 
 export default async function BusinessModelPage() {
@@ -11,9 +13,14 @@ export default async function BusinessModelPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <h1 className="text-2xl font-bold">Business Model</h1>
-      <BusinessModelClient />
-    </div>
+    <>
+      <PageHeader
+        title="Business model"
+        subtitle="Price per call and the global billing threshold."
+      />
+      <PageBody>
+        <BusinessModelClient />
+      </PageBody>
+    </>
   );
 }

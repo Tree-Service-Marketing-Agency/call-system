@@ -11,20 +11,56 @@
       "sourceType": "github",
       "computedHash": "4a543f93d3edc770a684aa554321ca113debc74b276e1cdc4b8a5a8c44932ab7"
     },
+    "apply-prd": {
+      "source": "arturoxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/apply-prd/SKILL.md",
+      "computedHash": "f2ce9afb11352a77b02049d0e4dcfe4a6e25e20dcd24fe741e83e82eaeafcc66"
+    },
+    "drizzle-migration": {
+      "source": "arturoxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/drizzle-migration/SKILL.md",
+      "computedHash": "d6122d68230d5fb99b089f9b2f44477b59f324db2c3339dc3b1ab5f63c31e3e4"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    },
+    "grill-with-docs": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/grill-with-docs/SKILL.md",
+      "computedHash": "31a5b1ae116558bf7d3f633f442835f54bd7645923d4f45c7823e52a97317666"
     },
     "next-best-practices": {
       "source": "vercel-labs/next-skills",
       "sourceType": "github",
       "computedHash": "db85045827ebeb83ac8dbc992b69188755eeb74dcf01cbf5e694d58aa494a106"
     },
+    "no-use-effect": {
+      "source": "factory-ai/factory-plugins",
+      "sourceType": "github",
+      "skillPath": "plugins/typescript/skills/no-use-effect/SKILL.md",
+      "computedHash": "3c4d9c9a65312482569bf3ad27d149c5c339567b52009f90ac29d212beee3766"
+    },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",
       "computedHash": "873c67922d80775a9fdf596db7964b579f0408c30ec6e3d11989f6055bbec89f"
+    },
+    "techdebt": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/techdebt/SKILL.md",
+      "computedHash": "98c2e95370d7227410338ae412b5b988c7347c8020ec92223f9edcc7f7d8ec14"
+    },
+    "to-prd": {
+      "source": "arturxdev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/to-prd/SKILL.md",
+      "computedHash": "fd8c259f9c44eff08e29a1a2fc71a806a3568d279a55387a361f78620b10f2aa"
     },
     "web-design-guidelines": {
       "source": "vercel-labs/agent-skills",

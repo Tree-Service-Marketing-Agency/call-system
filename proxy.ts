@@ -7,8 +7,10 @@ export const proxy = auth((req) => {
   // Public routes — skip auth check
   if (
     pathname.startsWith("/login") ||
+    pathname.startsWith("/audio-call") ||
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/webhooks")
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/external")
   ) {
     return NextResponse.next();
   }

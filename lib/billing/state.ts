@@ -1,36 +1,29 @@
-export type BillingState =
-  | "Pending"
-  | "Charged"
-  | "Marked non-billable"
-  | "Not billable"
-  | "Partial";
+export type BillingState = "Pending" | "Charged" | "Marked non-billable";
 
 export type LedgerStatus = "pending" | "reserved" | "paid" | "void";
 
-export function deriveBillingState(input: {
-  webhook2Received: boolean;
-  ledgerStatus: LedgerStatus | null;
-}): BillingState {
-  if (!input.webhook2Received) return "Partial";
-  if (input.ledgerStatus === null) return "Not billable";
-  if (input.ledgerStatus === "void") return "Marked non-billable";
-  if (input.ledgerStatus === "paid") return "Charged";
+// ADR-006: billing state is purely a function of the ledger. The "Partial"
+// state and the webhook2Received input were removed when call_data was
+// deprecated — every Call now arrives complete via call_ended.
+export function deriveBillingState(
+  ledgerStatus: LedgerStatus | null
+): BillingState | null {
+  if (ledgerStatus === null) return null;
+  if (ledgerStatus === "void") return "Marked non-billable";
+  if (ledgerStatus === "paid") return "Charged";
   return "Pending";
 }
 
 export function billingStateBadgeVariant(
   state: BillingState
-): "default" | "secondary" | "destructive" | "outline" {
+): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" {
   switch (state) {
     case "Pending":
-      return "secondary";
+      return "warning";
     case "Charged":
-      return "default";
+      return "success";
     case "Marked non-billable":
       return "destructive";
-    case "Not billable":
-    case "Partial":
-      return "outline";
   }
 }
 
