@@ -21,6 +21,7 @@ import { SettingsTab, type RetellNumberRow } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
 import { TextAgentTab } from "./tabs/text-agent-tab";
+import { PlaygroundTab } from "./tabs/playground-tab";
 import { ChatsTab } from "./tabs/chats-tab";
 import { EditCompanyNameDialog } from "./edit-company-name-dialog";
 
@@ -51,6 +52,7 @@ const TAB_VALUES = [
   "users",
   "billing",
   "text-agent",
+  "playground",
   "chats",
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -213,6 +215,9 @@ export function CompanyDetailClient({
           <TabsTrigger value="text-agent" className="px-1 pb-2.5">
             Text agent
           </TabsTrigger>
+          <TabsTrigger value="playground" className="px-1 pb-2.5">
+            Playground
+          </TabsTrigger>
           <TabsTrigger value="chats" className="px-1 pb-2.5">
             Chats
           </TabsTrigger>
@@ -250,6 +255,9 @@ export function CompanyDetailClient({
             companyName={company.name}
             user={user}
           />
+        </TabsContent>
+        <TabsContent value="playground" className="flex flex-1 flex-col gap-5">
+          <PlaygroundTab companyId={companyId} />
         </TabsContent>
         <TabsContent value="chats" className="flex flex-1 flex-col gap-5">
           <ChatsTab companyId={companyId} user={user} />

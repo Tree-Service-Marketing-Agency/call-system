@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 import { PlusIcon, XIcon } from "lucide-react";
 
@@ -419,20 +418,6 @@ export function TextAgentTab({
               </div>
             )}
           </div>
-
-          {/* Probar */}
-          {canEdit && (
-            <div className="flex">
-              <Button
-                variant="secondary"
-                render={
-                  <Link href={`/chat-playground?companyId=${companyId}`} />
-                }
-              >
-                Test
-              </Button>
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>
