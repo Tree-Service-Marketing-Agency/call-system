@@ -10,7 +10,7 @@ export const BUSINESS_TIMEZONE =
   process.env.BUSINESS_TIMEZONE || "America/Los_Angeles";
 
 export function formatBusinessNow(now: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("es-ES", {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone,
     dateStyle: "full",
     timeStyle: "short",
@@ -28,14 +28,14 @@ export function buildSystemPrompt(opts: {
   const prompt = opts.activePrompt.trim() || DEFAULT_SYSTEM_PROMPT;
 
   const lines: string[] = [
-    `Fecha y hora actual del negocio: ${formatBusinessNow(now, timeZone)} (${timeZone}).`,
-    `No inventes datos: si no sabes algo, dilo con claridad en lugar de adivinar.`,
+    `Current business date and time: ${formatBusinessNow(now, timeZone)} (${timeZone}).`,
+    `Do not make things up: if you don't know something, say so clearly instead of guessing.`,
   ];
 
   if (opts.catalog.length > 0) {
     lines.push(
       ``,
-      `Durante la conversación debes captar de forma natural estos datos del visitante. No los pidas como un formulario: hazlo cuando tenga sentido en el diálogo.`,
+      `During the conversation, naturally collect the following details from the visitor. Do not ask for them like a form — bring them up when it fits the dialogue.`,
       ...opts.catalog.map(
         (f) => `- ${f.name}${f.description ? `: ${f.description}` : ""}`
       )

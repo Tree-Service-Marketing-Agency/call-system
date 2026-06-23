@@ -24,7 +24,7 @@ export default async function ChatPlaygroundPage({
     return (
       <PageBody>
         <p className="text-sm text-muted-foreground">
-          Falta el parámetro companyId.
+          Missing companyId parameter.
         </p>
       </PageBody>
     );
@@ -37,7 +37,7 @@ export default async function ChatPlaygroundPage({
     return (
       <PageBody>
         <p className="text-sm text-muted-foreground">
-          No tienes acceso al playground de esta compañía.
+          You don&apos;t have access to this company&apos;s playground.
         </p>
       </PageBody>
     );
@@ -50,7 +50,7 @@ export default async function ChatPlaygroundPage({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Volver al agente de texto"
+            aria-label="Back to text agent"
             className="-ml-1"
             render={<Link href={`/companies/${companyId}?tab=text-agent`} />}
           >
@@ -60,10 +60,10 @@ export default async function ChatPlaygroundPage({
             href={`/companies/${companyId}?tab=text-agent`}
             className="hover:text-foreground"
           >
-            Agente de texto
+            Text agent
           </Link>
           <span>/</span>
-          <span className="text-foreground">Probar</span>
+          <span className="text-foreground">Test</span>
         </div>
         <h1 className="text-[22px] font-semibold tracking-tight text-foreground">
           Playground
