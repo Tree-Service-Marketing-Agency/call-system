@@ -123,7 +123,7 @@ _Avoid_: "prefijo", "código de ciudad", "lada".
 ### Chat embebible
 
 **Chat conversation**:
-El hilo persistente de **Chat messages** entre un **Customer** y el **Chat assistant** en la burbuja embebible (tabla `chat_conversations`). El id lo genera **siempre** el backend al recibir el primer mensaje sin `conversationId` y regresa en el header `X-Conversation-Id`; un id que no existe en la base es 404 — nunca upsert, el cliente no inventa ids. En esta fase no pertenece a ninguna **Company** (el `companyId` futuro se cuelga sin rediseño).
+El hilo persistente de **Chat messages** entre un **Customer** y el **Text agent** de una **Company** en la burbuja embebible (tabla `chat_conversations`). El id lo genera **siempre** el backend al recibir el primer mensaje sin `conversationId` y regresa en el header `X-Conversation-Id`; un id que no existe en la base es 404 — nunca upsert, el cliente no inventa ids (ADR-011). Pertenece a exactamente una **Company** (`company_id`), lleva un **Chat status** y un `last_interaction_at` denormalizado (fecha del último **Chat message**) que n8n usa para decidir cuándo enviar el **Lead**.
 _Avoid_: "conversación" a secas (en una **Call** eso es el **Transcript**), "chat session", "thread".
 
 **Chat message**:
@@ -131,8 +131,24 @@ Un turno persistido de una **Chat conversation** (tabla `chat_messages`): `role`
 _Avoid_: "message" a secas, "TranscriptTurn" (ese es el formato del **Transcript** de una **Call**).
 
 **Chat assistant**:
-La IA que responde en la burbuja — un LLM vía OpenRouter (modelo en `OPENROUTER_MODEL`, default `anthropic/claude-haiku-4.5`). No es un **Agency user** ni el voice agent de Retell.
+La IA que responde en la burbuja — un LLM vía OpenRouter (default `anthropic/claude-haiku-4.5`). Su configuración (prompt, modelo, **Catalog**) ya **no** es global por env: la aporta el **Text agent** de la **Company**. No es un **Agency user** ni el voice agent de Retell. Término preferente: **Text agent** (el `assistant` de un **Chat message** es el **Text agent**).
 _Avoid_: "bot", "el agente" (colisiona con el voice agent de una **Call**).
+
+**Text agent**:
+La configuración 1:1 de una **Company** para su **Chat assistant** (tabla `text_agents`, PK `company_id`): `system_prompt` (editable in-place; fallback `DEFAULT_SYSTEM_PROMPT` si vacío), `model`, **Catalog** de extracción y `enabled`. En **Fase 2** se suman `allowed_origins` (dominios donde puede embeberse) y un `embed_key` público para el widget (aún no en el esquema; ver ADR-012). Una **Company** tiene exactamente un **Text agent**. Reemplaza al prompt global por env del diseño Bulldog. El feature de texto **no entra en billing** (gratis por ahora).
+_Avoid_: "voice agent" / `agentId` de Retell (otro canal), "bot", "Chat assistant" como entidad aparte (es el runtime del **Text agent**).
+
+**Catalog**:
+La lista de campos que el **Text agent** debe captar de una **Chat conversation**, en `text_agents.catalog` (`jsonb`, array de `{ name, description }`). Doble rol: (1) se inyecta en el system prompt para que el agente *pida* esos datos, y (2) viaja en `GET /chats/pending` para que n8n sepa qué extraer. La extracción ocurre en **n8n**, no en este sistema.
+_Avoid_: "schema", "form", "campos del lead" a secas.
+
+**Lead**:
+Los datos del **Customer** que el **Text agent** busca captar en una **Chat conversation** (definidos por el **Catalog**) y que **n8n** extrae del transcript y envía al CRM. Este sistema **no** almacena los valores extraídos (v1); solo expone **Catalog** + **Chat messages** vía `GET /chats/pending`.
+_Avoid_: "contacto", "prospecto", confundir con **Notification phone** (alerta de lead de voz).
+
+**Chat status**:
+El estado de envío al CRM de una **Chat conversation** (`chat_conversations.status`, enum `pending` | `sent`, default `pending`). `pending` = aún no enviado; `sent` = ya enviado por n8n. **Terminal**: una vez `sent`, mensajes posteriores se anexan pero no lo regresan a `pending` ni reaparece en `GET /chats/pending`. Lo mueve n8n vía `PATCH /chats/status`.
+_Avoid_: confundir con los **Estados de billing** de una **Call** o con el `status` del ledger; enums de entidades distintas.
 
 ## Relationships
 
@@ -150,7 +166,11 @@ _Avoid_: "bot", "el agente" (colisiona con el voice agent de una **Call**).
 - Una **Company** tiene cero o más **Notification phones** en `companies.notification_phones`. La API externa `by-agent` los expone **todos**, incluidos los **Disabled**; n8n decide a quién notifica filtrando por `disabled`.
 - Una **Company** tiene cero o más **Retell numbers** (`retell_numbers`: par único agente↔número, `enabled` por fila) y a lo sumo un **Area code** (`companies.area_code`). El **Area code** se captura obligatorio en onboarding; los **Retell numbers** no entran en onboarding y se gestionan después desde Settings. El toggle `enabled` sí dispara llamadas a Retell (write-through, solo root); el resto (alta/edición/borrado de filas) es solo DB. La ingesta (`call_ended`) y el endpoint externo `by-agent` resuelven la compañía por `agent_id` contra `retell_numbers` (antes `company_agents`). Ver ADR-010.
 - Una **Chat conversation** tiene cero o más **Chat messages**, ordenados por `created_at`. El contexto que ve el LLM se reconstruye **siempre** desde `chat_messages`; el cliente solo manda el último mensaje del **Customer** + `conversationId` (ADR-011).
-- En esta fase `/api/chat` y la página de prueba (`/chat-playground`) viven detrás de la sesión del dashboard, restringidos a **Agency users** (root y admin). La exposición pública anónima llega junto con la validación de origen por dominio, en la fase de la burbuja real.
+- En esta fase `/api/chat` y el playground (`/chat-playground?companyId=`) viven detrás de la sesión del dashboard (no público). Pueden **usarlos** —probar el agente— los **Agency users** (cualquier compañía) y el `staff_admin` de su propia compañía; el `source` se fuerza a `playground`. La configuración del **Text agent** y el historial de **Chats** se editan/ven desde las tabs del detalle de compañía, hoy alcanzable solo por **Agency users** (el `proxy` redirige a los company users fuera de `/companies`); la superficie self-service dedicada para company users queda como follow-up (ADR-012). El backend ya autoriza la matriz completa (agency cualquiera; `staff_admin` su compañía edita; `staff` su compañía read-only; costo solo agency). La exposición pública anónima llega junto con la validación de origen por dominio, en la **Fase 2** de la burbuja real.
+- Una **Company** tiene exactamente un **Text agent** (`text_agents`, PK `company_id`); el **Text agent** produce cero o más **Chat conversations**, cada una con cero o más **Chat messages** ordenados por `created_at`.
+- Transiciones legales del **Chat status**: `pending → sent` (terminal; lo mueve n8n vía `PATCH /chats/status`). No hay retorno a `pending`.
+- `GET /chats/pending` (consumo de n8n) devuelve las **Chat conversations** en `pending` **y de `source` = `widget`** (las de `playground` nunca llegan al CRM) con su **Catalog**, sus **Chat messages** y `last_interaction_at`; n8n extrae el **Lead**, lo envía al CRM y marca `sent`.
+- El **Text agent** lo editan `root`, `admin` y el `staff_admin` de su propia **Company**; `staff` lo ve read-only. El **costo** acumulado de una **Chat conversation** (y por **Chat message**) es métrica interna visible **solo a Agency users** (como `retell_cost`, ADR-003).
 - Un **Password reset** cambia la contraseña que se usará en próximos logins, pero no revoca sesiones activas en esta iteración.
 - Un **Password reset** ejecutado por `root`, incluso sobre su propia cuenta, no requiere capturar la contraseña actual; se confirma la generación de una **Temporary password**.
 
@@ -177,6 +197,6 @@ _Avoid_: "bot", "el agente" (colisiona con el voice agent de una **Call**).
 - **"Retell phone number"** pasó de descriptor a entidad accionable. El modelo legacy era una columna única company-level (`companies.retell_phone_number`, texto descriptivo, sin efecto operativo) más la tabla `company_agents` (solo mapeo `agent_id → company_id`). Resuelto (ADR-010, PRD #41): la entidad es el **Retell number** — múltiples por compañía, par 1:1 con su agente, con toggle que **sí** ejecuta acciones en Retell. `company_agents` quedó **absorbida** por `retell_numbers` y ambas superficies legacy fueron dropeadas; cualquier mención a ellas como entidades vivas es stale.
 - **`enabled` de un Retell number puede driftear del estado real en Retell.** Es un cache local write-through: se escribe solo tras confirmación 2xx de Retell, pero nunca se lee de vuelta. Si alguien edita inbound agents directamente en el dashboard de Retell, este sistema no se entera. **Aceptado** — sin reconciliación en esta iteración; ante duda, el dashboard de Retell es la verdad del ruteo y el siguiente toggle desde aquí re-impone el estado local. Ver ADR-010.
 - **"Transcription"** vs **"Transcript"**: el código, la tabla (`calls.transcript`), el tipo (`TranscriptTurn`), el helper (`filterTranscript`) y ADR-004 usan **transcript**; la tarjeta original y Retell (`transcription_object`) decían "transcription". Resuelto: el término canónico —glosario, label de la tab y toda la copy— es **Transcript** (el artefacto). "Transcription" se reserva para el proceso de transcribir y el campo crudo de Retell.
-- **"Customer" ahora cruza dos canales.** En las **Calls** es quien llamó (con teléfono/nombre capturados); en el chat es quien escribe en la burbuja, **anónimo** en esta fase. Resuelto: mismo término — es la misma persona del negocio (el cliente final de la compañía) por canal distinto. Frontera explícita: `/customers` lista solo los de voz; un **Customer** de chat no aparece ahí mientras el chat no capture identidad. Se descartó "Visitor" para no partir la persona en dos términos.
+- **"Customer" ahora cruza dos canales.** En las **Calls** es quien llamó (con teléfono/nombre capturados); en el chat es quien escribe en la burbuja — ahora con el propósito de captar su identidad como **Lead** (vía el **Catalog**). Resuelto: mismo término — la misma persona del negocio (el cliente final de la compañía) por canal distinto. Frontera explícita: `/customers` lista solo los de voz; un **Customer** de chat **no** aparece ahí porque los valores del **Lead** los extrae y guarda **n8n**, no este sistema. Se descartó "Visitor" para no partir la persona en dos términos.
 - **El rol `'user'` de un `chat_message` NO es un "User" del glosario** — misma trampa que `TranscriptTurn`, misma resolución: en UI y docs es el **Customer**. Y `'assistant'` es el **Chat assistant** (LLM), no un **Agency user** ni el rol `"agent"` de un **Transcript** (voice agent de Retell).
 - **El rol `"user"` de un `TranscriptTurn` NO es el "User" del glosario.** En el transcript `"user"` = quien llamó (el cliente final); en el resto del sistema "User" = **Agency user** / **Company user** (un login). Resuelto: en la UI el rol `"user"` se muestra como **Customer** (consistente con el campo "Customer" del propio sheet y con `/customers`) y el rol `"agent"` como **Agent** (el voice agent de Retell, no un **Agency user**).
