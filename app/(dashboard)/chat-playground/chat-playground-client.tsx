@@ -120,7 +120,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
     <div className="flex flex-1 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Hazte pasar por un visitante y prueba el agente.
+          Pose as a visitor and test the agent.
         </p>
         <Button
           type="button"
@@ -129,7 +129,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
           onClick={newConversation}
           disabled={busy}
         >
-          Nueva conversación
+          New conversation
         </Button>
       </div>
 
@@ -139,7 +139,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
       >
         {messages.length === 0 && status === "ready" && (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Escribe un mensaje para empezar.
+            Type a message to start.
           </div>
         )}
 
@@ -163,7 +163,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
                     : "text-muted-foreground",
                 )}
               >
-                {isUser ? "Cliente" : "Asistente"}
+                {isUser ? "Customer" : "Assistant"}
               </span>
               <p className="whitespace-pre-wrap break-words leading-snug">
                 {messageText(message)}
@@ -184,7 +184,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
 
         {error && (
           <p className="text-sm text-destructive">
-            Ocurrió un error. Intenta de nuevo.
+            Something went wrong. Try again.
           </p>
         )}
       </div>
@@ -193,7 +193,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
         <Textarea
           value={input}
           rows={2}
-          placeholder="Escribe un mensaje…"
+          placeholder="Type a message…"
           className="resize-none"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -204,7 +204,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
           }}
         />
         <Button type="button" onClick={submit} disabled={busy || input.trim().length === 0}>
-          Enviar
+          Send
         </Button>
       </div>
     </div>

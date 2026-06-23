@@ -64,7 +64,7 @@ function formatDate(iso: string | null): { date: string; time: string } {
 
 function sourceBadge(source: ChatSource) {
   return source === "widget" ? (
-    <Badge variant="success">Cliente</Badge>
+    <Badge variant="success">Customer</Badge>
   ) : (
     <Badge variant="secondary">Playground</Badge>
   );
@@ -72,9 +72,9 @@ function sourceBadge(source: ChatSource) {
 
 function statusBadge(status: ChatStatus) {
   return status === "sent" ? (
-    <Badge variant="success">Enviado</Badge>
+    <Badge variant="success">Sent</Badge>
   ) : (
-    <Badge variant="secondary">Pendiente</Badge>
+    <Badge variant="secondary">Pending</Badge>
   );
 }
 
@@ -135,13 +135,13 @@ export function ChatsTab({
           }}
         >
           <SelectTrigger className="w-56">
-            <SelectValue placeholder="Todas" />
+            <SelectValue placeholder="All" />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="all">Todas ({counts.all})</SelectItem>
+              <SelectItem value="all">All ({counts.all})</SelectItem>
               <SelectItem value="widget">
-                Cliente ({counts.widget})
+                Customer ({counts.widget})
               </SelectItem>
               <SelectItem value="playground">
                 Playground ({counts.playground})
@@ -155,14 +155,14 @@ export function ChatsTab({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Origen</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Mensajes</TableHead>
-              <TableHead>Vista previa</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Messages</TableHead>
+              <TableHead>Preview</TableHead>
               {showCost && (
-                <TableHead className="text-right">Costo</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
               )}
-              <TableHead>Fecha</TableHead>
+              <TableHead>Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -172,7 +172,7 @@ export function ChatsTab({
                   colSpan={colSpan}
                   className="h-32 text-center text-sm text-muted-foreground"
                 >
-                  Sin chats todavía
+                  No chats yet
                 </TableCell>
               </TableRow>
             ) : (
@@ -199,8 +199,8 @@ export function ChatsTab({
                         <>
                           <span className="text-foreground">
                             {row.preview.role === "user"
-                              ? "Cliente"
-                              : "Asistente"}
+                              ? "Customer"
+                              : "Assistant"}
                             :
                           </span>{" "}
                           {row.preview.content}

@@ -211,7 +211,7 @@ export function CompanyDetailClient({
             Billing
           </TabsTrigger>
           <TabsTrigger value="text-agent" className="px-1 pb-2.5">
-            Agente de texto
+            Text agent
           </TabsTrigger>
           <TabsTrigger value="chats" className="px-1 pb-2.5">
             Chats

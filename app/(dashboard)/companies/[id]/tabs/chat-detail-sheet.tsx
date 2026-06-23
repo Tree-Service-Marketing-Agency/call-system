@@ -57,7 +57,7 @@ function formatDateTime(iso: string | null): string {
 
 function sourceBadge(source: "widget" | "playground") {
   return source === "widget" ? (
-    <Badge variant="success">Cliente</Badge>
+    <Badge variant="success">Customer</Badge>
   ) : (
     <Badge variant="secondary">Playground</Badge>
   );
@@ -65,9 +65,9 @@ function sourceBadge(source: "widget" | "playground") {
 
 function statusBadge(status: "pending" | "sent") {
   return status === "sent" ? (
-    <Badge variant="success">Enviado</Badge>
+    <Badge variant="success">Sent</Badge>
   ) : (
-    <Badge variant="secondary">Pendiente</Badge>
+    <Badge variant="secondary">Pending</Badge>
   );
 }
 
@@ -103,9 +103,9 @@ export function ChatDetailSheet({
   return (
     <Sheet open={!!conversationId} onOpenChange={handleOpenChange}>
       <SheetContent className="flex w-full flex-col gap-0 bg-card p-0 sm:max-w-[560px]">
-        <SheetTitle className="sr-only">Detalle del chat</SheetTitle>
+        <SheetTitle className="sr-only">Chat detail</SheetTitle>
         <SheetDescription className="sr-only">
-          Detalle del chat
+          Chat detail
         </SheetDescription>
         {displayId ? (
           <ChatDetailContent
@@ -115,7 +115,7 @@ export function ChatDetailSheet({
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Cargando…
+            Loading…
           </div>
         )}
       </SheetContent>
@@ -159,7 +159,7 @@ function ChatDetailContent({
       {/* Header */}
       <div className="flex flex-col gap-3 border-b border-border px-6 pt-5 pb-4 pr-9">
         <div className="text-[15px] font-semibold tracking-tight text-foreground">
-          Conversación
+          Conversation
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {sourceBadge(conversation.source)}
@@ -178,7 +178,7 @@ function ChatDetailContent({
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {messages.length === 0 ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Sin mensajes.
+            No messages.
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -208,7 +208,7 @@ function ChatDetailContent({
                           : "text-muted-foreground",
                       )}
                     >
-                      {isUser ? "Cliente" : "Asistente"}
+                      {isUser ? "Customer" : "Assistant"}
                     </span>
                     <p className="whitespace-pre-wrap break-words leading-snug">
                       {message.content}

@@ -116,7 +116,7 @@ export function TextAgentTab({
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      return { ok: false, error: data?.error ?? "No se pudo guardar" };
+      return { ok: false, error: data?.error ?? "Could not save" };
     }
     const data = (await res.json()) as TextAgentResponse;
     return { ok: true, data };
@@ -189,9 +189,9 @@ export function TextAgentTab({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Agente de texto</CardTitle>
+          <CardTitle>Text agent</CardTitle>
           <CardDescription>
-            Chat de IA para captar leads en el sitio de la empresa.
+            AI chat that captures leads on the company&apos;s website.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -233,7 +233,7 @@ export function TextAgentTab({
                 disabled={!canEdit || togglePending}
                 onCheckedChange={(checked) => toggleEnabled(checked === true)}
               />
-              Agente habilitado
+              Agent enabled
             </Label>
             {enabledError && (
               <p className="text-sm text-destructive">{enabledError}</p>
@@ -242,7 +242,7 @@ export function TextAgentTab({
 
           {/* Model */}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="text-agent-model">Modelo</Label>
+            <Label htmlFor="text-agent-model">Model</Label>
             <Select
               value={agent.model}
               onValueChange={(v) => {
@@ -251,7 +251,7 @@ export function TextAgentTab({
               disabled={!canEdit || modelSaving}
             >
               <SelectTrigger id="text-agent-model" className="w-64">
-                <SelectValue placeholder="Selecciona un modelo" />
+                <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -277,7 +277,7 @@ export function TextAgentTab({
               rows={6}
               disabled={!canEdit}
               className="font-mono"
-              placeholder="Déjalo vacío para usar el prompt por defecto."
+              placeholder="Leave empty to use the default prompt."
               onChange={(e) => setPromptDraft(e.target.value)}
             />
             {promptError && (
@@ -286,7 +286,7 @@ export function TextAgentTab({
             {canEdit && promptDirty && (
               <div className="mt-1 flex gap-2">
                 <Button size="sm" onClick={savePrompt} disabled={promptSaving}>
-                  {promptSaving ? "Guardando…" : "Guardar"}
+                  {promptSaving ? "Saving…" : "Save"}
                 </Button>
                 <Button
                   size="sm"
@@ -297,7 +297,7 @@ export function TextAgentTab({
                   }}
                   disabled={promptSaving}
                 >
-                  Cancelar
+                  Cancel
                 </Button>
               </div>
             )}
@@ -305,14 +305,14 @@ export function TextAgentTab({
 
           {/* Catalog */}
           <div className="flex flex-col gap-2">
-            <Label>Catálogo</Label>
+            <Label>Catalog</Label>
             <p className="text-sm text-muted-foreground">
-              Campos que el agente intenta capturar de cada visitante.
+              Fields the agent tries to capture from each visitor.
             </p>
             <div className="flex flex-col gap-2">
               {catalogDraft.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Sin campos todavía.
+                  No fields yet.
                 </p>
               )}
               {catalogDraft.map((field, index) => (
@@ -323,7 +323,7 @@ export function TextAgentTab({
                   <div className="flex flex-1 flex-col gap-2">
                     <Input
                       value={field.name}
-                      placeholder="Nombre del campo (ej. teléfono)"
+                      placeholder="Field name (e.g. phone)"
                       disabled={!canEdit}
                       onChange={(e) => {
                         const next = [...catalogDraft];
@@ -333,7 +333,7 @@ export function TextAgentTab({
                     />
                     <Input
                       value={field.description}
-                      placeholder="Descripción (qué pedir y por qué)"
+                      placeholder="Description (what to ask and why)"
                       disabled={!canEdit}
                       onChange={(e) => {
                         const next = [...catalogDraft];
@@ -350,7 +350,7 @@ export function TextAgentTab({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      aria-label="Eliminar campo"
+                      aria-label="Remove field"
                       onClick={() =>
                         setCatalogDraft(
                           catalogDraft.filter((_, i) => i !== index),
@@ -371,7 +371,7 @@ export function TextAgentTab({
                   onClick={() => setCatalogDraft([...catalogDraft, EMPTY_FIELD])}
                 >
                   <PlusIcon data-icon="inline-start" />
-                  Agregar campo
+                  Add field
                 </Button>
               )}
             </div>
@@ -385,7 +385,7 @@ export function TextAgentTab({
                   onClick={saveCatalog}
                   disabled={catalogSaving}
                 >
-                  {catalogSaving ? "Guardando…" : "Guardar"}
+                  {catalogSaving ? "Saving…" : "Save"}
                 </Button>
                 <Button
                   size="sm"
@@ -396,7 +396,7 @@ export function TextAgentTab({
                   }}
                   disabled={catalogSaving}
                 >
-                  Cancelar
+                  Cancel
                 </Button>
               </div>
             )}
@@ -411,7 +411,7 @@ export function TextAgentTab({
                   <Link href={`/chat-playground?companyId=${companyId}`} />
                 }
               >
-                Probar
+                Test
               </Button>
             </div>
           )}
