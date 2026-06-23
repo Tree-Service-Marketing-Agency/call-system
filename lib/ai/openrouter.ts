@@ -6,7 +6,7 @@ import { DEFAULT_MODEL, isAllowedModel } from "./models";
 // provider with a placeholder key.
 export function assertAiConfigured(): void {
   if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY no está configurada");
+    throw new Error("OPENROUTER_API_KEY is not configured");
   }
 }
 
