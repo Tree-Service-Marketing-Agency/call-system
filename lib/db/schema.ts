@@ -80,9 +80,13 @@ export const companies = pgTable(
   ]
 );
 
-export const companiesRelations = relations(companies, ({ many }) => ({
+export const companiesRelations = relations(companies, ({ one, many }) => ({
   retellNumbers: many(retellNumbers),
   users: many(users),
+  // ADR-012: a Company has exactly one Text agent (1:1) and many Chat
+  // conversations. Forward refs — tables declared lower in this file.
+  textAgent: one(textAgents),
+  chatConversations: many(chatConversations),
 }));
 
 // ─── Retell Numbers ──────────────────────────────────────────
@@ -336,3 +340,133 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
   type: text("type").notNull(),
   processedAt: timestamp("processed_at").defaultNow().notNull(),
 });
+
+// ─── Text Agent + Chat (PRD "agents fase 1") ─────────────────
+// ADR-011: server owns the conversation id; the LLM context is rebuilt from
+// the DB. ADR-012: per-Company Text agent supersedes the global env prompt.
+// ADR-013: lead extraction lives in n8n, not here.
+
+export const chatConversationSourceEnum = pgEnum("chat_conversation_source", [
+  "widget",
+  "playground",
+]);
+
+export const chatStatusEnum = pgEnum("chat_status", ["pending", "sent"]);
+
+export const chatMessageRoleEnum = pgEnum("chat_message_role", [
+  "user",
+  "assistant",
+]);
+
+// A field the Text agent must capture from a Chat conversation (the Catalog).
+// Double role: injected into the system prompt AND shipped to n8n.
+export type CatalogField = {
+  name: string;
+  description: string;
+};
+
+// ADR-012: a Company's 1:1 Text agent config. PK = company_id enforces the
+// one-per-company relation. `system_prompt` is plain (not versioned); an empty
+// value falls back to DEFAULT_SYSTEM_PROMPT in code. `model` is constrained to
+// a curated allowlist at the app layer (cost is absorbed by the agency).
+export const textAgents = pgTable("text_agents", {
+  companyId: text("company_id")
+    .primaryKey()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(true),
+  // Default mirrors DEFAULT_MODEL in lib/ai/models.ts; the app sets it
+  // explicitly on every write, this is only the DB-level fallback.
+  model: text("model").notNull().default("anthropic/claude-haiku-4.5"),
+  systemPrompt: text("system_prompt").notNull().default(""),
+  catalog: jsonb("catalog")
+    .$type<CatalogField[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const textAgentsRelations = relations(textAgents, ({ one }) => ({
+  company: one(companies, {
+    fields: [textAgents.companyId],
+    references: [companies.id],
+  }),
+}));
+
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    source: chatConversationSourceEnum("source").notNull().default("widget"),
+    status: chatStatusEnum("status").notNull().default("pending"),
+    // Denormalized timestamp of the last Chat message. n8n reads it to decide
+    // when the chat cooled off enough to send the Lead. Null until first msg.
+    lastInteractionAt: timestamp("last_interaction_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // GET /chats/pending: status=pending AND source=widget, ordered by
+    // last_interaction_at asc.
+    index("chat_conversations_status_source_last_idx").on(
+      t.status,
+      t.source,
+      t.lastInteractionAt
+    ),
+    // Master list of a company's chats, newest first.
+    index("chat_conversations_company_created_idx").on(
+      t.companyId,
+      t.createdAt
+    ),
+  ]
+);
+
+export const chatConversationsRelations = relations(
+  chatConversations,
+  ({ one, many }) => ({
+    company: one(companies, {
+      fields: [chatConversations.companyId],
+      references: [companies.id],
+    }),
+    messages: many(chatMessages),
+  })
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    role: chatMessageRoleEnum("role").notNull(),
+    content: text("content").notNull(),
+    // Usage/cost — assistant turns only (null on user turns). Cost is integer
+    // micro-USD for sub-cent precision. Visible only to agency users (ADR-003).
+    model: text("model"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    costMicroUsd: integer("cost_micro_usd"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    // Rebuild a conversation chronologically; tie-break by id for stability.
+    index("chat_messages_conversation_created_idx").on(
+      t.conversationId,
+      t.createdAt
+    ),
+  ]
+);
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  conversation: one(chatConversations, {
+    fields: [chatMessages.conversationId],
+    references: [chatConversations.id],
+  }),
+}));

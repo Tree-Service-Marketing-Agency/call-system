@@ -14,6 +14,9 @@
 | [008](./adr-008-notification-phones-as-objects.md) | Notification phones como objetos `{ phone, note, disabled }` | Aceptado | 2026-05-19 |
 | [009](./adr-009-public-audio-call-page.md) | Página pública sin password para escuchar la Recording de una Call | Aceptado | 2026-05-26 |
 | [010](./adr-010-retell-numbers-toggle.md) | Retell numbers como pares número↔agente togglables (primera integración outbound a Retell) | Aceptado | 2026-06-09 |
+| [011](./adr-011-chat-history-from-db.md) | El historial del chat se reconstruye desde la base; el cliente solo manda el último mensaje | Aceptado | 2026-06-09 |
+| [012](./adr-012-text-agent-per-company.md) | Text agent por compañía (1:1) supersede el prompt global por env | Aceptado | 2026-06-22 |
+| [013](./adr-013-lead-extraction-in-n8n.md) | La extracción de leads ocurre en n8n, no en la app | Aceptado | 2026-06-22 |
 
 ---
 

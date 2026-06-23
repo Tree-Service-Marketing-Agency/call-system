@@ -20,6 +20,8 @@ import type { NotificationPhone } from "@/lib/notification-phones";
 import { SettingsTab, type RetellNumberRow } from "./tabs/settings-tab";
 import { UsersTab } from "./tabs/users-tab";
 import { BillingTab } from "./tabs/billing-tab";
+import { TextAgentTab } from "./tabs/text-agent-tab";
+import { ChatsTab } from "./tabs/chats-tab";
 import { EditCompanyNameDialog } from "./edit-company-name-dialog";
 
 interface CompanyDetail {
@@ -43,7 +45,14 @@ interface CompanyDetail {
   monthlyBillingCents: number;
 }
 
-const TAB_VALUES = ["calls", "settings", "users", "billing"] as const;
+const TAB_VALUES = [
+  "calls",
+  "settings",
+  "users",
+  "billing",
+  "text-agent",
+  "chats",
+] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 const DEFAULT_TAB: TabValue = "calls";
 
@@ -201,6 +210,12 @@ export function CompanyDetailClient({
           <TabsTrigger value="billing" className="px-1 pb-2.5">
             Billing
           </TabsTrigger>
+          <TabsTrigger value="text-agent" className="px-1 pb-2.5">
+            Agente de texto
+          </TabsTrigger>
+          <TabsTrigger value="chats" className="px-1 pb-2.5">
+            Chats
+          </TabsTrigger>
         </TabsList>
       </div>
 
@@ -228,6 +243,16 @@ export function CompanyDetailClient({
         </TabsContent>
         <TabsContent value="billing" className="flex flex-1 flex-col gap-5">
           <BillingTab companyId={companyId} />
+        </TabsContent>
+        <TabsContent value="text-agent" className="flex flex-1 flex-col gap-5">
+          <TextAgentTab
+            companyId={companyId}
+            companyName={company.name}
+            user={user}
+          />
+        </TabsContent>
+        <TabsContent value="chats" className="flex flex-1 flex-col gap-5">
+          <ChatsTab companyId={companyId} user={user} />
         </TabsContent>
       </PageBody>
     </Tabs>
