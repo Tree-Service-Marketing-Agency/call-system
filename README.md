@@ -19,6 +19,22 @@ Environment variables are read from `.env`. For scripts that run outside of Next
 npx tsx --env-file=.env <script>
 ```
 
+## Embed the chat widget
+
+Each company's Text agent can be embedded as a floating chat bubble on its own
+website. Copy the snippet from the company's **Text agent → Embed** tab (it
+carries the company's opaque `embed_key`) and paste it before `</body>`:
+
+```html
+<script async src="https://your-app.com/widget.v1.js"
+        data-key="YOUR_EMBED_KEY" data-color="#4f46e5" data-title="Chat with us"></script>
+```
+
+By default the widget only loads on this dashboard. To allow it on the company's
+site, add its domain(s) under **Allowed origins** in the same tab (e.g.
+`https://example.com`). Rotating the embed key invalidates all existing embeds —
+update the snippet afterward. See ADR-014.
+
 ## Scripts
 
 ### App

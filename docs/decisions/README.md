@@ -17,6 +17,7 @@
 | [011](./adr-011-chat-history-from-db.md) | El historial del chat se reconstruye desde la base; el cliente solo manda el último mensaje | Aceptado | 2026-06-09 |
 | [012](./adr-012-text-agent-per-company.md) | Text agent por compañía (1:1) supersede el prompt global por env | Aceptado | 2026-06-22 |
 | [013](./adr-013-lead-extraction-in-n8n.md) | La extracción de leads ocurre en n8n, no en la app | Aceptado | 2026-06-22 |
+| [014](./adr-014-embed-multitenant-embed-key-csp.md) | Embed multi-tenant: `embed_key` opaco/rotable + `frame-ancestors` por compañía desde `allowed_origins` | Aceptado | 2026-06-23 |
 
 ---
 

@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies } from "@/lib/db/schema";
-import { getSessionUser } from "@/lib/auth-helpers";
+import { getSessionUser, isAgencyRole } from "@/lib/auth-helpers";
 import { canManageTextAgent, canViewCompany } from "@/lib/text-agent/authz";
 import { getTextAgent, updateTextAgent } from "@/lib/text-agent/repository";
 import { validateCatalog } from "@/lib/text-agent/catalog";
+import { validateAllowedOrigins } from "@/lib/text-agent/origins";
 import { isAllowedModel } from "@/lib/ai/models";
 
 const SYSTEM_PROMPT_MAX = 8000;
@@ -44,8 +45,11 @@ export async function GET(
       model: agent.model,
       systemPrompt: agent.systemPrompt,
       catalog: agent.catalog,
+      embedKey: agent.embedKey,
+      allowedOrigins: agent.allowedOrigins,
     },
     canEdit: canManageTextAgent(user, id),
+    canManageEmbed: isAgencyRole(user.role),
   });
 }
 
@@ -72,6 +76,7 @@ export async function PATCH(
     model?: unknown;
     systemPrompt?: unknown;
     catalog?: unknown;
+    allowedOrigins?: unknown;
   };
 
   const patch: {
@@ -79,6 +84,7 @@ export async function PATCH(
     model?: string;
     systemPrompt?: string;
     catalog?: { name: string; description: string }[];
+    allowedOrigins?: string[];
   } = {};
 
   if ("enabled" in body) {
@@ -125,6 +131,19 @@ export async function PATCH(
     patch.catalog = result.value;
   }
 
+  // ADR-014: the embed/origin allowlist is an agency-only security lever, even
+  // for the company's own staff_admin.
+  if ("allowedOrigins" in body) {
+    if (!isAgencyRole(user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const result = validateAllowedOrigins(body.allowedOrigins);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    patch.allowedOrigins = result.value;
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
       { error: "nothing to update" },
@@ -140,7 +159,10 @@ export async function PATCH(
       model: updated.model,
       systemPrompt: updated.systemPrompt,
       catalog: updated.catalog,
+      embedKey: updated.embedKey,
+      allowedOrigins: updated.allowedOrigins,
     },
     canEdit: true,
+    canManageEmbed: isAgencyRole(user.role),
   });
 }
