@@ -39,7 +39,16 @@ export async function resolveConversation(opts: {
   const existing = await db.query.chatConversations.findFirst({
     where: eq(chatConversations.id, id),
   });
-  if (!existing || existing.companyId !== companyId) {
+  // Isolation: an id must match BOTH the company AND the surface it was created
+  // for. A widget caller must never continue a playground conversation (or vice
+  // versa), even within the same company — otherwise widget turns could land on
+  // a playground thread (and never reach n8n's widget-only pickup), or a
+  // playground user could plant turns into a widget thread. ADR-011/014.
+  if (
+    !existing ||
+    existing.companyId !== companyId ||
+    existing.source !== source
+  ) {
     throw new ConversationNotFoundError(id);
   }
   return { id: existing.id, companyId: existing.companyId };

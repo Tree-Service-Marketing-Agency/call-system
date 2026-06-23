@@ -24,6 +24,8 @@
     "@openrouter/ai-sdk-provider": "^2.9.1",
     "@stripe/react-stripe-js": "^6.1.0",
     "@stripe/stripe-js": "^9.1.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "agentation": "^3.0.2",
     "ai": "^6.0.208",
     "bcryptjs": "^3.0.3",

@@ -382,6 +382,19 @@ export const textAgents = pgTable("text_agents", {
     .$type<CatalogField[]>()
     .notNull()
     .default(sql`'[]'::jsonb`),
+  // ADR-014: opaque, rotatable public id for the embeddable widget (the script
+  // tag carries this, never company_id). 32-hex (UUID without dashes).
+  embedKey: text("embed_key")
+    .notNull()
+    .unique()
+    .$defaultFn(() => crypto.randomUUID().replace(/-/g, "")),
+  // ADR-014: per-company embed/origin allowlist. Drives the dynamic
+  // frame-ancestors CSP on /widget and the defense-in-depth origin check on the
+  // public chat flow. Empty = widget only loads on this dashboard ('self').
+  allowedOrigins: jsonb("allowed_origins")
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
