@@ -117,8 +117,8 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Pose as a visitor and test the agent.
         </p>
@@ -135,7 +135,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
 
       <div
         ref={scrollToBottom}
-        className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-xs"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-xs"
       >
         {messages.length === 0 && status === "ready" && (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -189,7 +189,7 @@ export function ChatPlaygroundClient({ companyId }: { companyId: string }) {
         )}
       </div>
 
-      <div className="flex items-end gap-2">
+      <div className="flex shrink-0 items-end gap-2">
         <Textarea
           value={input}
           rows={2}

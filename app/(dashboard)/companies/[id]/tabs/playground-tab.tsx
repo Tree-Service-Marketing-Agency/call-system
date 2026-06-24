@@ -42,7 +42,14 @@ export function PlaygroundTab({ companyId }: { companyId: string }) {
           {model ? modelLabel(model) : "—"}
         </span>
       </p>
-      <ChatPlaygroundClient companyId={companyId} />
+      {/* Bound the chat to the viewport so the conversation scrolls inside the
+          box and the composer (textarea + Send) stays pinned and visible — the
+          dashboard shell is min-h-svh (page-scrolls), so without an explicit
+          height here the message list would grow and push the input off-screen.
+          The offset accounts for the company header, tabs, and the Model line. */}
+      <div className="flex h-[calc(100svh-16rem)] min-h-96 flex-col">
+        <ChatPlaygroundClient companyId={companyId} />
+      </div>
     </div>
   );
 }
