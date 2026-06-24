@@ -7,9 +7,8 @@ import { canManageTextAgent, canViewCompany } from "@/lib/text-agent/authz";
 import { getTextAgent, updateTextAgent } from "@/lib/text-agent/repository";
 import { validateCatalog } from "@/lib/text-agent/catalog";
 import { validateAllowedOrigins } from "@/lib/text-agent/origins";
+import { SYSTEM_PROMPT_MAX } from "@/lib/text-agent/limits";
 import { isAllowedModel } from "@/lib/ai/models";
-
-const SYSTEM_PROMPT_MAX = 8000;
 
 async function companyExists(id: string): Promise<boolean> {
   const row = await db.query.companies.findFirst({

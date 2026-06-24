@@ -11,6 +11,9 @@ export type AllowedModel = { id: string; label: string };
 
 export const ALLOWED_MODELS: AllowedModel[] = [
   { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5" },
+  { id: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6" },
+  { id: "openai/gpt-5-mini", label: "GPT 5 mini" },
+  { id: "moonshotai/kimi-k2.6", label: "Kimi k2.6" },
 ];
 
 export function isAllowedModel(id: string): boolean {

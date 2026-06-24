@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ALLOWED_MODELS } from "@/lib/ai/models";
+import { SYSTEM_PROMPT_MAX } from "@/lib/text-agent/limits";
 import type { SessionUser } from "@/lib/auth-helpers";
 
 interface CatalogField {
@@ -293,10 +294,23 @@ export function TextAgentTab({
               value={promptDraft}
               rows={6}
               disabled={!canEdit}
+              maxLength={SYSTEM_PROMPT_MAX}
               className="font-mono"
               placeholder="Leave empty to use the default prompt."
               onChange={(e) => setPromptDraft(e.target.value)}
             />
+            {canEdit && (
+              <p
+                className={
+                  promptDraft.length >= SYSTEM_PROMPT_MAX
+                    ? "text-right text-xs text-destructive"
+                    : "text-right text-xs text-muted-foreground"
+                }
+              >
+                {promptDraft.length.toLocaleString()} /{" "}
+                {SYSTEM_PROMPT_MAX.toLocaleString()}
+              </p>
+            )}
             {promptError && (
               <p className="text-sm text-destructive">{promptError}</p>
             )}
