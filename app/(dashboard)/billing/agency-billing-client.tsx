@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   AlertTriangleIcon,
   CreditCardIcon,
@@ -61,6 +62,8 @@ import { StatsGrid } from "@/components/dashboard/stats-grid";
 import { StatCard, type TrendDirection } from "@/components/dashboard/stat-card";
 import { FilterBar } from "@/components/dashboard/filter-bar";
 import { DataTablePagination } from "@/components/dashboard/data-table-pagination";
+import { cn } from "@/lib/utils";
+import { evaluateCompanyChargeEligibility } from "@/lib/billing/company-charge-eligibility";
 
 interface CompanyRow {
   id: string;
@@ -244,6 +247,106 @@ function StatusBadge({
       />
       <TooltipContent side="top">{cfg.description}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function CompanyChargeAction({
+  company,
+  thresholdCalls,
+  onCharged,
+}: {
+  company: CompanyRow;
+  thresholdCalls: number;
+  onCharged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  const eligibility = evaluateCompanyChargeEligibility({
+    billingStatus: company.billingStatus,
+    hasPaymentMethod: company.hasPaymentMethod,
+    pendingCallsCount: company.pendingCallsCount,
+    thresholdCalls,
+    balanceCents: company.balanceCents,
+  });
+  const disabled = !eligibility.chargeable || running;
+  const tooltip = eligibility.chargeable
+    ? "Charge this company now"
+    : eligibility.message;
+
+  async function confirm() {
+    setRunning(true);
+    try {
+      const res = await fetch("/api/billing/run-cron", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: company.id }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.outcome === "invoiced") {
+        toast.success(`Charging ${company.name} — invoice created in Stripe.`);
+      } else if (res.ok && json?.outcome === "not_eligible") {
+        toast.error(`${company.name} is no longer eligible to be charged.`);
+      } else if (res.ok && json?.outcome === "stripe_error") {
+        toast.error(`Stripe rejected the charge for ${company.name}.`);
+      } else {
+        toast.error(`Could not charge ${company.name}.`);
+      }
+    } catch {
+      toast.error(`Could not charge ${company.name}.`);
+    } finally {
+      setRunning(false);
+      setOpen(false);
+      onCharged();
+    }
+  }
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Charge ${company.name}`}
+              aria-disabled={disabled}
+              className={cn(disabled && "cursor-not-allowed opacity-40")}
+              onClick={() => {
+                if (!disabled) setOpen(true);
+              }}
+            >
+              <ZapIcon />
+            </Button>
+          }
+        />
+        <TooltipContent side="top">{tooltip}</TooltipContent>
+      </Tooltip>
+      <AlertDialog
+        open={open}
+        onOpenChange={(v) => {
+          if (!running) setOpen(v);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Charge {company.name} now?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This creates a real Stripe invoice for {company.pendingCallsCount}{" "}
+              pending call{company.pendingCallsCount === 1 ? "" : "s"} totaling{" "}
+              {usd(company.balanceCents)}. The payment result arrives
+              asynchronously via Stripe, same as the daily run.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={running}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirm} disabled={running}>
+              {running ? "Charging…" : "Charge"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -573,7 +676,7 @@ export function AgencyBillingClient({ role }: Props) {
               <TableHead>Status</TableHead>
               <TableHead>Last invoice</TableHead>
               <TableHead>Card</TableHead>
-              <TableHead className="w-[60px] text-right" />
+              <TableHead className="w-[96px] text-right" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -661,15 +764,22 @@ export function AgencyBillingClient({ role }: Props) {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link href={`/companies/${c.id}`}>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`View ${c.name}`}
-                      >
-                        <Eye />
-                      </Button>
-                    </Link>
+                    <div className="flex items-center justify-end gap-1">
+                      <CompanyChargeAction
+                        company={c}
+                        thresholdCalls={data.thresholdCalls}
+                        onCharged={refresh}
+                      />
+                      <Link href={`/companies/${c.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`View ${c.name}`}
+                        >
+                          <Eye />
+                        </Button>
+                      </Link>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

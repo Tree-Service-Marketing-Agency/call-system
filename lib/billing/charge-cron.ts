@@ -136,8 +136,20 @@ async function logSkippedCompanies(
   };
 }
 
-interface ChargeAttemptResult {
+/**
+ * Distinguishes the three terminal branches of a single-company charge so
+ * callers (e.g. the Manual company charge endpoint) can report a precise
+ * result. `runBillingChargeRun` only reads `ok`, so its contract is unaffected.
+ * - `invoiced`:     invoice created in Stripe (ok).
+ * - `not_eligible`: the gate rejected the company (wrong status, no card,
+ *                   below threshold, or zero balance).
+ * - `stripe_error`: the gate passed but the Stripe call failed (rolled back).
+ */
+export type ChargeAttemptOutcome = "invoiced" | "not_eligible" | "stripe_error";
+
+export interface ChargeAttemptResult {
   ok: boolean;
+  outcome: ChargeAttemptOutcome;
   invoiceId?: string;
 }
 
@@ -240,7 +252,7 @@ async function chargeOneCompany(
     };
   });
 
-  if (!result) return { ok: false };
+  if (!result) return { ok: false, outcome: "not_eligible" };
 
   // Outside the DB transaction: hit the Stripe API.
   try {
@@ -295,7 +307,7 @@ async function chargeOneCompany(
         amount_cents: result.amountCents,
       })
     );
-    return { ok: true, invoiceId: result.invoiceId };
+    return { ok: true, outcome: "invoiced", invoiceId: result.invoiceId };
   } catch (error) {
     console.error(
       "[billing-cron] stripe invoice creation failed",
@@ -323,7 +335,7 @@ async function chargeOneCompany(
         .where(eq(companies.id, companyId));
     });
 
-    return { ok: false };
+    return { ok: false, outcome: "stripe_error" };
   }
 }
 
@@ -348,6 +360,7 @@ export async function runBillingChargeForCompany(args: {
       triggered_by: triggeredBy,
       company_id: companyId,
       ok: result.ok,
+      outcome: result.outcome,
       invoice_id: result.invoiceId ?? null,
     })
   );
